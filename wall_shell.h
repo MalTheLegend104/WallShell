@@ -29,6 +29,7 @@
 
 #ifdef DISABLE_MALLOC
 // We're going to develop it for malloc first before implementing this
+#define COMMAND_LIMIT 25
 #endif // DISABLE_MALLOC
 
 /* Freestanding headers. */
@@ -38,6 +39,8 @@
 
 /* Standard Library Headers */
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 /**
  * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
@@ -79,6 +82,25 @@ typedef struct {
 	const char** optional;
 	const int optional_count;
 } help_entry_specific_t;
+
+typedef enum {
+	CONSOLE_COLOR_BLACK,
+	CONSOLE_COLOR_BRIGHT_BLACK,
+	CONSOLE_COLOR_WHITE,
+	CONSOLE_COLOR_BRIGHT_WHITE,
+	CONSOLE_COLOR_RED,
+	CONSOLE_COLOR_BRIGHT_RED,
+	CONSOLE_COLOR_GREEN,
+	CONSOLE_COLOR_BRIGHT_GREEN,
+	CONSOLE_COLOR_YELLOW,
+	CONSOLE_COLOR_BRIGHT_YELLOW,
+	CONSOLE_COLOR_CYAN,
+	CONSOLE_COLOR_BRIGHT_CYAN,
+	CONSOLE_COLOR_BLUE,
+	CONSOLE_COLOR_BRIGHT_BLUE,
+	CONSOLE_COLOR_MAGENTA,
+	CONSOLE_COLOR_BRIGHT_MAGENTA
+} ConsoleColor;
 
 bool compareCommands(const command_t c1, const command_t c2);
 
