@@ -8,52 +8,68 @@
 
 #ifndef CUSTOM_CONSOLE_COLORS
 	#ifdef _WIN32
-		#include <Windows.h>
-
-		#define SET_CONSOLE_COLOR_BLACK             SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED); // Grey
-		#define SET_CONSOLE_COLOR_RED               SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED);
-		#define SET_CONSOLE_COLOR_BRIGHT_RED        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
-		#define SET_CONSOLE_COLOR_GREEN             SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN);
-		#define SET_CONSOLE_COLOR_BRIGHT_GREEN      SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-		#define SET_CONSOLE_COLOR_YELlOW            SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN);
-		#define SET_CONSOLE_COLOR_BRIGHT_YELlOW     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-		#define SET_CONSOLE_COLOR_CYAN              SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN);
-		#define SET_CONSOLE_COLOR_BRIGHT_CYAN       SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
-		#define SET_CONSOLE_COLOR_BLUE              SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE );
-		#define SET_CONSOLE_COLOR_BRIGHT_BLUE       SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_INTENSITY);
-		#define SET_CONSOLE_COLOR_MAGENTA           SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_RED);
-		#define SET_CONSOLE_COLOR_BRIGHT_MAGENTA    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_RED | FOREGROUND_INTENSITY);
-
-		#define SET_TERMINAL_LOCALE                 SetConsoleOutputCP(CP_UTF8);
-	
+/* I'm trying to include the least amount of windows headers as possible */
+		#include <WinNls.h>
+		#include <consoleapi2.h>
+		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
 	#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-/* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
-		#define SET_CONSOLE_COLOR_BLACK             printf("\e[0m");
-		#define SET_CONSOLE_COLOR_BRIGHT_BLACK      printf("\e[0m");
-		#define SET_CONSOLE_COLOR_WHITE             printf("\e[0m");
-		#define SET_CONSOLE_COLOR_BRIGHT_WHITE      printf("\e[0m");
-		#define SET_CONSOLE_COLOR_RED               printf("\e[31m");
-		#define SET_CONSOLE_COLOR_BRIGHT_RED        printf("\e[91m");
-		#define SET_CONSOLE_COLOR_GREEN             printf("\e[32m");
-		#define SET_CONSOLE_COLOR_BRIGHT_GREEN      printf("\e[92m");
-		#define SET_CONSOLE_COLOR_YELLOW            printf("\e[32m");
-		#define SET_CONSOLE_COLOR_BRIGHT_YELLOW     printf("\e[93m");
-		#define SET_CONSOLE_COLOR_CYAN              printf("\e[36m");
-		#define SET_CONSOLE_COLOR_BRIGHT_CYAN       printf("\e[96m");
-		#define SET_CONSOLE_COLOR_BLUE              printf("\e[34m");
-		#define SET_CONSOLE_COLOR_BRIGHT_BLUE       printf("\e[94m");
-		#define SET_CONSOLE_COLOR_MAGENTA           printf("\e[35m");
-		#define SET_CONSOLE_COLOR_BRIGHT_MAGENTA    printf("\e[95m");
-		
-		#define SET_TERMINAL_LOCALE ;
+		#define SET_TERMINAL_LOCALE
 	#endif
+/* Modern windows supports these escape codes, older windows versions use SetConsoleTextAttribute */
+/* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
+	#define RESET_CONSOLE                   printf("\e[27m");
+	
+	#define SET_CONSOLE_FG_BLACK            printf("\e[30m");
+	#define SET_CONSOLE_FG_BRIGHT_BLACK     printf("\e[90m");
+	#define SET_CONSOLE_FG_WHITE            printf("\e[37m");
+	#define SET_CONSOLE_FG_BRIGHT_WHITE     printf("\e[97m");
+	#define SET_CONSOLE_FG_RED              printf("\e[31m");
+	#define SET_CONSOLE_FG_BRIGHT_RED       printf("\e[91m");
+	#define SET_CONSOLE_FG_GREEN            printf("\e[32m");
+	#define SET_CONSOLE_FG_BRIGHT_GREEN     printf("\e[92m");
+	#define SET_CONSOLE_FG_YELLOW           printf("\e[32m");
+	#define SET_CONSOLE_FG_BRIGHT_YELLOW    printf("\e[93m");
+	#define SET_CONSOLE_FG_CYAN             printf("\e[36m");
+	#define SET_CONSOLE_FG_BRIGHT_CYAN      printf("\e[96m");
+	#define SET_CONSOLE_FG_BLUE             printf("\e[34m");
+	#define SET_CONSOLE_FG_BRIGHT_BLUE      printf("\e[94m");
+	#define SET_CONSOLE_FG_MAGENTA          printf("\e[35m");
+	#define SET_CONSOLE_FG_BRIGHT_MAGENTA   printf("\e[95m");
+	
+	#define SET_CONSOLE_BG_BLACK            printf("\e[40m");
+	#define SET_CONSOLE_BG_BRIGHT_BLACK     printf("\e[100m");
+	#define SET_CONSOLE_BG_WHITE            printf("\e[47m");
+	#define SET_CONSOLE_BG_BRIGHT_WHITE     printf("\e[107m");
+	#define SET_CONSOLE_BG_RED              printf("\e[41m");
+	#define SET_CONSOLE_BG_BRIGHT_RED       printf("\e[101m");
+	#define SET_CONSOLE_BG_GREEN            printf("\e[42m");
+	#define SET_CONSOLE_BG_BRIGHT_GREEN     printf("\e[102m");
+	#define SET_CONSOLE_BG_YELLOW           printf("\e[42m");
+	#define SET_CONSOLE_BG_BRIGHT_YELLOW    printf("\e[103m");
+	#define SET_CONSOLE_BG_CYAN             printf("\e[46m");
+	#define SET_CONSOLE_BG_BRIGHT_CYAN      printf("\e[106m");
+	#define SET_CONSOLE_BG_BLUE             printf("\e[44m");
+	#define SET_CONSOLE_BG_BRIGHT_BLUE      printf("\e[104m");
+	#define SET_CONSOLE_BG_MAGENTA          printf("\e[45m");
+	#define SET_CONSOLE_BG_BRIGHT_MAGENTA   printf("\e[105m");
 #endif // CUSTOM_CONSOLE_COLORS
 
-uint8_t console_FG_default = 0;
-uint8_t console_BG_default = 0;
+#ifdef DISABLE_MALLOC
 
-uint8_t console_FG_current = 0;
-uint8_t console_BG_current = 0;
+#else
+command_t* commands;
+#endif
+
+size_t command_count = 0;
+char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
+
+uint8_t console_FG_default = CONSOLE_FG_BRIGHT_WHITE;
+uint8_t console_BG_default = CONSOLE_BG_BLACK;
+
+uint8_t console_FG_current = CONSOLE_FG_BRIGHT_WHITE;
+uint8_t console_BG_current = CONSOLE_BG_BLACK;
+
+void setConsoleLocale() { SET_TERMINAL_LOCALE; }
 
 void setConsoleForegroundDefault(ConsoleColor c) { console_FG_default = c; }
 void setConsoleBackgroundDefault(ConsoleColor c) { console_BG_default = c; }
