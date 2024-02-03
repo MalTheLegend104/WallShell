@@ -8,6 +8,16 @@
 #ifndef COMMAND_HANDLER_H
 #define COMMAND_HANDLER_H
 
+/* Freestanding headers. */
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+/* Standard Library Headers */
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
 /*********************************************************************************
  * Check for user definitions
  *********************************************************************************/
@@ -29,18 +39,28 @@
 
 #ifdef DISABLE_MALLOC
 // We're going to develop it for malloc first before implementing this
-	#define COMMAND_LIMIT 25
+	#ifndef COMMAND_LIMIT
+		#define COMMAND_LIMIT 25
+	#endif
+	#ifndef MAX_ARGS
+		#define MAX_ARGS 32
+	#endif
 #endif // DISABLE_MALLOC
 
-/* Freestanding headers. */
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
+// ------------------------------------------------------------------------------------------------
+// If the user hasn't defined streams, set the defaults.
+// ------------------------------------------------------------------------------------------------
+#ifndef NO_STD_STREAMS
 
-/* Standard Library Headers */
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#endif // NO_STD_STREAMS
+
+typedef enum {
+	WALLSHELL_NO_ERROR = 0,
+	WALLSHELL_OUT_OF_MEMORY,
+	WALLSHELL_COMMAND_LIMIT_REACHED,
+	WALLSHELL_OUT_STREAM_NOT_SET,
+	WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT
+} wallshell_error_t;
 
 /**
  * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
@@ -84,6 +104,7 @@ typedef struct {
 } help_entry_specific_t;
 
 typedef enum {
+	CONSOLE_FG_DEFAULT = 0,
 	CONSOLE_FG_BLACK,
 	CONSOLE_FG_BRIGHT_BLACK,
 	CONSOLE_FG_WHITE,
@@ -100,6 +121,10 @@ typedef enum {
 	CONSOLE_FG_BRIGHT_BLUE,
 	CONSOLE_FG_MAGENTA,
 	CONSOLE_FG_BRIGHT_MAGENTA,
+} console_fg_color_t;
+
+typedef enum {
+	CONSOLE_BG_DEFAULT = 0,
 	CONSOLE_BG_BLACK,
 	CONSOLE_BG_BRIGHT_BLACK,
 	CONSOLE_BG_WHITE,
@@ -116,18 +141,42 @@ typedef enum {
 	CONSOLE_BG_BRIGHT_BLUE,
 	CONSOLE_BG_MAGENTA,
 	CONSOLE_BG_BRIGHT_MAGENTA
-} ConsoleColor;
+} console_bg_color_t;
 
-bool compareCommands(const command_t c1, const command_t c2);
+typedef struct {
+	console_fg_color_t foreground;
+	console_bg_color_t background;
+} console_color_t;
 
-bool compareCommands(const command_t c1, const command_t c2);
+/* Console Color Configuration */
+console_color_t getCurrentColors();
+console_color_t getDefaultColors();
+wallshell_error_t setConsoleDefaults(console_color_t c);
+wallshell_error_t setConsoleForegroundDefault(console_fg_color_t c);
+wallshell_error_t setConsoleBackgroundDefault(console_bg_color_t c);
+wallshell_error_t setForegroundColor(console_fg_color_t color);
+wallshell_error_t setBackgroundColor(console_bg_color_t color);
+wallshell_error_t setConsoleColors(console_color_t colors);
 
-void registerCommand(const command_t c);
+/* Stream configurations. */
+typedef enum {
+	WALLSHELL_INPUT,
+	WALLSHELL_OUTPUT,
+	WALLSHELL_ERROR
+} wallshell_stream;
+void setStream(wallshell_stream type, FILE* stream);
+
+/* General operations */
+wallshell_error_t registerCommand(const command_t c);
 void deregisterCommand(const command_t c);
 void executeCommand(char* commandBuf);
-void terminalMain();
+wallshell_error_t terminalMain();
 
+/* Utility functions */
 void printGeneralHelp(help_entry_general_t* entry);
 void printSpecificHelp(help_entry_specific_t* entry);
-
+void setConsoleLocale();
+void initalizeDefaultStreams();
+		
+bool compareCommands(const command_t c1, const command_t c2);
 #endif // COMMAND_HANDLER_H
