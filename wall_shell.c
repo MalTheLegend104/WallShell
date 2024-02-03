@@ -5,6 +5,9 @@
  * @version v1.0
  */
 #include "wall_shell.h"
+#ifdef _WIN32
+	#include <Windows.h>
+#endif
 
 /**
  * @brief Internal function to concat a single char to the end of a string.
@@ -30,7 +33,7 @@ char* wallshell_internal_strcat_c(char* string, char c, size_t size) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Streams, perhaps the most important thing for this entire file.
+// Streams
 // ------------------------------------------------------------------------------------------------
 FILE* wallshell_out_stream = NULL;
 FILE* wallshell_err_stream = NULL;
@@ -38,73 +41,82 @@ FILE* wallshell_in_stream = NULL;
 
 void setStream(wallshell_stream type, FILE* stream) {
 	switch (type) {
-		case WALLSHELL_INPUT:
-			wallshell_in_stream = stream;
+		case WALLSHELL_INPUT: wallshell_in_stream = stream;
 			break;
-		case WALLSHELL_OUTPUT:
-			wallshell_out_stream = stream;
+		case WALLSHELL_OUTPUT: wallshell_out_stream = stream;
 			break;
-		case WALLSHELL_ERROR:
-			wallshell_err_stream = stream;
+		case WALLSHELL_ERROR: wallshell_err_stream = stream;
 			break;
 		default: break;
 	}
 }
 
-void initalizeDefaultStreams() {
+void initializeDefaultStreams() {
 	setStream(WALLSHELL_INPUT, stdin);
 	setStream(WALLSHELL_ERROR, stderr);
 	setStream(WALLSHELL_OUTPUT, stdout);
 }
+
+#ifndef CUSTOM_CONSOLE_SETUP
+wallshell_error_t setConsoleMode() {
+#ifdef _WIN32
+	// Set output mode to handle virtual terminal sequences
+	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+	if (hOut == INVALID_HANDLE_VALUE) return WALLSHELL_CONSOLE_SETUP_ERROR;
+	
+	HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
+	if (hIn == INVALID_HANDLE_VALUE) return WALLSHELL_CONSOLE_SETUP_ERROR;
+	
+	DWORD dwOriginalOutMode = 0;
+	DWORD dwOriginalInMode = 0;
+	if (!GetConsoleMode(hOut, &dwOriginalOutMode)) return WALLSHELL_CONSOLE_SETUP_ERROR;
+	if (!GetConsoleMode(hIn, &dwOriginalInMode)) return WALLSHELL_CONSOLE_SETUP_ERROR;
+	
+	DWORD dwRequestedOutModes = ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+	DWORD dwRequestedInModes = ENABLE_VIRTUAL_TERMINAL_INPUT;
+	
+	DWORD dwOutMode = dwOriginalOutMode | dwRequestedOutModes;
+	if (!SetConsoleMode(hOut, dwOutMode)) {
+		// we failed to set both modes, try to step down mode gracefully.
+		dwRequestedOutModes = ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+		dwOutMode = dwOriginalOutMode | dwRequestedOutModes;
+		if (!SetConsoleMode(hOut, dwOutMode)) {
+			// Failed to set any VT mode, can't do anything here.
+			return WALLSHELL_CONSOLE_SETUP_ERROR;
+		}
+	}
+	
+	DWORD dwInMode = dwOriginalInMode | dwRequestedInModes;
+	if (!SetConsoleMode(hIn, dwInMode)) {
+		// Failed to set VT input mode, can't do anything here.
+		return WALLSHELL_CONSOLE_SETUP_ERROR;
+	}
+#endif
+	return WALLSHELL_NO_ERROR;
+}
+#endif // CUSTOM_CONSOLE_SETUP
 
 // ------------------------------------------------------------------------------------------------
 // Default console color output.
 // ------------------------------------------------------------------------------------------------
 #ifndef CUSTOM_CONSOLE_COLORS
 	#ifdef _WIN32
-		/* I'm trying to include the least amount of windows headers as possible */
+/* I'm trying to include the least amount of windows headers as possible */
 		#include <Windows.h>
 		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
 	#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 		#define SET_TERMINAL_LOCALE
 	#endif
-	/* Modern windows supports these escape codes, older windows versions use SetConsoleTextAttribute */
-	/* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
-	#define RESET_CONSOLE                   fprintf(wallshell_out_stream, "\e[27m");
+/* Modern windows is supposed to support these escape codes, older windows versions use SetConsoleTextAttribute */
+/* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
+	#define RESET_CONSOLE                   fprintf(wallshell_out_stream, "\033[0m")
+
+void changeConsoleColor(console_fg_color_t fg, console_bg_color_t bg) {
+	fprintf(wallshell_out_stream, "\033[%d;%dm", fg, bg);
+}
 	
-	#define SET_CONSOLE_FG_BLACK            fprintf(wallshell_out_stream, "\e[30m");
-	#define SET_CONSOLE_FG_BRIGHT_BLACK     fprintf(wallshell_out_stream, "\e[90m");
-	#define SET_CONSOLE_FG_WHITE            fprintf(wallshell_out_stream, "\e[37m");
-	#define SET_CONSOLE_FG_BRIGHT_WHITE     fprintf(wallshell_out_stream, "\e[97m");
-	#define SET_CONSOLE_FG_RED              fprintf(wallshell_out_stream, "\e[31m");
-	#define SET_CONSOLE_FG_BRIGHT_RED       fprintf(wallshell_out_stream, "\e[91m");
-	#define SET_CONSOLE_FG_GREEN            fprintf(wallshell_out_stream, "\e[32m");
-	#define SET_CONSOLE_FG_BRIGHT_GREEN     fprintf(wallshell_out_stream, "\e[92m");
-	#define SET_CONSOLE_FG_YELLOW           fprintf(wallshell_out_stream, "\e[32m");
-	#define SET_CONSOLE_FG_BRIGHT_YELLOW    fprintf(wallshell_out_stream, "\e[93m");
-	#define SET_CONSOLE_FG_CYAN             fprintf(wallshell_out_stream, "\e[36m");
-	#define SET_CONSOLE_FG_BRIGHT_CYAN      fprintf(wallshell_out_stream, "\e[96m");
-	#define SET_CONSOLE_FG_BLUE             fprintf(wallshell_out_stream, "\e[34m");
-	#define SET_CONSOLE_FG_BRIGHT_BLUE      fprintf(wallshell_out_stream, "\e[94m");
-	#define SET_CONSOLE_FG_MAGENTA          fprintf(wallshell_out_stream, "\e[35m");
-	#define SET_CONSOLE_FG_BRIGHT_MAGENTA   fprintf(wallshell_out_stream, "\e[95m");
-	
-	#define SET_CONSOLE_BG_BLACK            fprintf(wallshell_out_stream, "\e[40m");
-	#define SET_CONSOLE_BG_BRIGHT_BLACK     fprintf(wallshell_out_stream, "\e[100m");
-	#define SET_CONSOLE_BG_WHITE            fprintf(wallshell_out_stream, "\e[47m");
-	#define SET_CONSOLE_BG_BRIGHT_WHITE     fprintf(wallshell_out_stream, "\e[107m");
-	#define SET_CONSOLE_BG_RED              fprintf(wallshell_out_stream, "\e[41m");
-	#define SET_CONSOLE_BG_BRIGHT_RED       fprintf(wallshell_out_stream, "\e[101m");
-	#define SET_CONSOLE_BG_GREEN            fprintf(wallshell_out_stream, "\e[42m");
-	#define SET_CONSOLE_BG_BRIGHT_GREEN     fprintf(wallshell_out_stream, "\e[102m");
-	#define SET_CONSOLE_BG_YELLOW           fprintf(wallshell_out_stream, "\e[42m");
-	#define SET_CONSOLE_BG_BRIGHT_YELLOW    fprintf(wallshell_out_stream, "\e[103m");
-	#define SET_CONSOLE_BG_CYAN             fprintf(wallshell_out_stream, "\e[46m");
-	#define SET_CONSOLE_BG_BRIGHT_CYAN      fprintf(wallshell_out_stream, "\e[106m");
-	#define SET_CONSOLE_BG_BLUE             fprintf(wallshell_out_stream, "\e[44m");
-	#define SET_CONSOLE_BG_BRIGHT_BLUE      fprintf(wallshell_out_stream, "\e[104m");
-	#define SET_CONSOLE_BG_MAGENTA          fprintf(wallshell_out_stream, "\e[45m");
-	#define SET_CONSOLE_BG_BRIGHT_MAGENTA   fprintf(wallshell_out_stream, "\e[105m");
+	#define SET_CONSOLE_COLORS(a, b) changeConsoleColor(a, b);
+
 #endif // CUSTOM_CONSOLE_COLORS
 
 // ------------------------------------------------------------------------------------------------
@@ -130,71 +142,20 @@ size_t previous_commands_size;
 // ------------------------------------------------------------------------------------------------
 // Console Color Configuration
 // ------------------------------------------------------------------------------------------------
-console_color_t default_colors = { CONSOLE_FG_BRIGHT_WHITE, CONSOLE_BG_BLACK };
-console_color_t current_colors = { CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT };
+console_color_t default_colors = {CONSOLE_FG_BRIGHT_WHITE, CONSOLE_BG_BLACK};
+console_color_t current_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
 
-wallshell_error_t updateFG() {
+wallshell_error_t updateColors() {
 	if (!wallshell_out_stream) return WALLSHELL_OUT_STREAM_NOT_SET;
 	if (current_colors.foreground == CONSOLE_FG_DEFAULT) {
 		// It's guaranteed that the user cant set default_colors.foreground to CONSOLE_FG_DEFAULT
 		current_colors.foreground = default_colors.foreground;
-		return updateFG();
 	}
-	switch (current_colors.foreground) {
-		case CONSOLE_FG_BLACK: SET_CONSOLE_FG_BLACK; break;
-		case CONSOLE_FG_BRIGHT_BLACK: SET_CONSOLE_FG_BRIGHT_BLACK; break;
-		case CONSOLE_FG_WHITE: SET_CONSOLE_FG_WHITE; break;
-		case CONSOLE_FG_BRIGHT_WHITE: SET_CONSOLE_FG_BRIGHT_WHITE; break;
-		case CONSOLE_FG_RED: SET_CONSOLE_FG_RED; break;
-		case CONSOLE_FG_BRIGHT_RED: SET_CONSOLE_FG_BRIGHT_RED; break;
-		case CONSOLE_FG_GREEN: SET_CONSOLE_FG_GREEN; break;
-		case CONSOLE_FG_BRIGHT_GREEN: SET_CONSOLE_FG_BRIGHT_GREEN; break;
-		case CONSOLE_FG_YELLOW: SET_CONSOLE_FG_YELLOW; break;
-		case CONSOLE_FG_BRIGHT_YELLOW: SET_CONSOLE_FG_BRIGHT_YELLOW; break;
-		case CONSOLE_FG_CYAN: SET_CONSOLE_FG_CYAN; break;
-		case CONSOLE_FG_BRIGHT_CYAN: SET_CONSOLE_FG_BRIGHT_CYAN; break;
-		case CONSOLE_FG_BLUE: SET_CONSOLE_FG_BLUE; break;
-		case CONSOLE_FG_BRIGHT_BLUE: SET_CONSOLE_FG_BRIGHT_BLUE; break;
-		case CONSOLE_FG_MAGENTA: SET_CONSOLE_FG_MAGENTA; break;
-		case CONSOLE_FG_BRIGHT_MAGENTA: SET_CONSOLE_FG_BRIGHT_MAGENTA; break;
-		default: break;
-	}
-	return WALLSHELL_NO_ERROR;
-}
-
-wallshell_error_t updateBG() {
-	if (!wallshell_out_stream) return WALLSHELL_OUT_STREAM_NOT_SET;
 	if (current_colors.background == CONSOLE_BG_DEFAULT) {
-		// It's guaranteed that the user cant set default_colors.background to CONSOLE_BG_DEFAULT
 		current_colors.background = default_colors.background;
-		return updateFG();
 	}
-	switch (current_colors.background){
-		case CONSOLE_BG_BLACK: SET_CONSOLE_BG_BLACK; break;
-		case CONSOLE_BG_BRIGHT_BLACK: SET_CONSOLE_BG_BRIGHT_BLACK; break;
-		case CONSOLE_BG_WHITE: SET_CONSOLE_BG_WHITE; break;
-		case CONSOLE_BG_BRIGHT_WHITE: SET_CONSOLE_BG_BRIGHT_WHITE; break;
-		case CONSOLE_BG_RED: SET_CONSOLE_BG_RED; break;
-		case CONSOLE_BG_BRIGHT_RED: SET_CONSOLE_BG_BRIGHT_RED; break;
-		case CONSOLE_BG_GREEN: SET_CONSOLE_BG_GREEN; break;
-		case CONSOLE_BG_BRIGHT_GREEN: SET_CONSOLE_BG_BRIGHT_GREEN; break;
-		case CONSOLE_BG_YELLOW: SET_CONSOLE_BG_YELLOW; break;
-		case CONSOLE_BG_BRIGHT_YELLOW: SET_CONSOLE_BG_BRIGHT_YELLOW; break;
-		case CONSOLE_BG_CYAN: SET_CONSOLE_BG_CYAN; break;
-		case CONSOLE_BG_BRIGHT_CYAN: SET_CONSOLE_BG_BRIGHT_CYAN; break;
-		case CONSOLE_BG_BLUE: SET_CONSOLE_BG_BLUE; break;
-		case CONSOLE_BG_BRIGHT_BLUE: SET_CONSOLE_BG_BRIGHT_BLUE; break;
-		case CONSOLE_BG_MAGENTA: SET_CONSOLE_BG_MAGENTA; break;
-		case CONSOLE_BG_BRIGHT_MAGENTA: SET_CONSOLE_BG_BRIGHT_MAGENTA; break;
-		default: break;
-	}
+	SET_CONSOLE_COLORS(current_colors.foreground, current_colors.background);
 	return WALLSHELL_NO_ERROR;
-}
-
-wallshell_error_t updateColors() {
-	wallshell_error_t ret = updateFG();
-	if (!ret) ret = updateBG();
-	return ret;
 }
 
 wallshell_error_t setConsoleForegroundDefault(console_fg_color_t c) {
@@ -215,25 +176,25 @@ wallshell_error_t setConsoleDefaults(console_color_t c) {
 	return ret;
 }
 
-console_color_t getCurrentColors(){ return current_colors; }
-console_color_t getDefaultColors(){ return default_colors; }
+console_color_t getCurrentColors() { return current_colors; }
+console_color_t getDefaultColors() { return default_colors; }
 
 wallshell_error_t setConsoleColors(console_color_t colors) {
 	current_colors.foreground = colors.foreground;
 	current_colors.background = colors.background;
 	return updateColors();
 }
-wallshell_error_t setForegroundColor(console_fg_color_t color){
+wallshell_error_t setForegroundColor(console_fg_color_t color) {
 	if (current_colors.foreground == CONSOLE_FG_DEFAULT)
 		current_colors.foreground = default_colors.foreground;
 	else current_colors.foreground = color;
-	return updateFG();
+	return updateColors();
 }
-wallshell_error_t setBackgroundColor(console_bg_color_t color){
+wallshell_error_t setBackgroundColor(console_bg_color_t color) {
 	if (current_colors.background == CONSOLE_BG_DEFAULT)
 		current_colors.background = default_colors.background;
 	else current_colors.background = color;
-	return updateBG();
+	return updateColors();
 }
 
 /**
@@ -242,23 +203,23 @@ wallshell_error_t setBackgroundColor(console_bg_color_t color){
  */
 wallshell_error_t registerCommand(const command_t c) {
 #ifdef DISABLE_MALLOC
-		if (current_command_spot != COMMAND_LIMIT){
-			commands[current_command_spot] = c;
-			current_command_spot++;
-		} else {
-			return WALLSHELL_COMMAND_LIMIT_REACHED;
-		}
-#else
-		if (!commands)
-			commands = malloc(sizeof(command_t));
-		else if (current_command_spot > command_size) {
-			// realloc invalidates the old pointer on call, but leaves it alone if it cant find the memory.
-			// If this function returns with an out of memory error, the shell is still usable.
-			command_t* new_ptr = realloc(commands, (size_t) (command_size * sizeof(command_t) * 1.5));
-			if (!new_ptr) return WALLSHELL_OUT_OF_MEMORY;
-			else commands = new_ptr;
-		}
+	if (current_command_spot != COMMAND_LIMIT){
 		commands[current_command_spot] = c;
+		current_command_spot++;
+	} else {
+		return WALLSHELL_COMMAND_LIMIT_REACHED;
+	}
+#else
+	if (!commands)
+		commands = malloc(sizeof(command_t));
+	else if (current_command_spot > command_size) {
+		// realloc invalidates the old pointer on call, but leaves it alone if it cant find the memory.
+		// If this function returns with an out of memory error, the shell is still usable.
+		command_t* new_ptr = realloc(commands, (size_t) (command_size * sizeof(command_t) * 1.5));
+		if (!new_ptr) return WALLSHELL_OUT_OF_MEMORY;
+		else commands = new_ptr;
+	}
+	commands[current_command_spot] = c;
 #endif
 	return WALLSHELL_NO_ERROR;
 }
@@ -271,7 +232,7 @@ void executeCommand(char* commandBuf) {
 	fprintf(wallshell_out_stream, "Command buf: %s", commandBuf);
 }
 
-void registerBasicCommands(){
+void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 }
@@ -287,10 +248,13 @@ wallshell_error_t terminalMain() {
 	if (!wallshell_err_stream) setStream(WALLSHELL_ERROR, stderr);
 	if (!wallshell_out_stream) setStream(WALLSHELL_OUTPUT, stdout);
 	if (!wallshell_in_stream) setStream(WALLSHELL_INPUT, stdin);
+
+#ifndef CUSTOM_CONSOLE_SETUP
+	setConsoleMode();
+#endif // CUSTOM_CONSOLE_SETUP
 	
 	// Make sure the colors are set properly if they are defaults
-	if (current_colors.foreground == CONSOLE_FG_DEFAULT) updateFG();
-	if (current_colors.background == CONSOLE_BG_DEFAULT) updateBG();
+	updateColors();
 	
 	/* Ideally something should've caught this before calling main, but we still need to check. */
 	if (!commands) commands = malloc(sizeof(command_t));
@@ -304,9 +268,9 @@ wallshell_error_t terminalMain() {
 	
 	char commandBuf[MAX_COMMAND_BUF];
 	char oldCommand[MAX_COMMAND_BUF];
-
-	while (true){
-		if (newCommand){
+	
+	while (true) {
+		if (newCommand) {
 			fprintf(wallshell_out_stream, "\n%s ", SHELL_COMMAND_PREFIX);
 			newCommand = false;
 			tabPressed = false;
@@ -361,7 +325,7 @@ wallshell_error_t terminalMain() {
 			// ctrl+d on unix, ctrl+z on windows
 			break;
 		} else {
-			wallshell_internal_strcat_c(commandBuf,(char) current, MAX_COMMAND_BUF);
+			wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
 		}
 	}
 	return WALLSHELL_NO_ERROR;
