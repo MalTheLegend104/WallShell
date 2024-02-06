@@ -167,6 +167,7 @@ typedef enum {
 	WALLSHELL_OUTPUT,
 	WALLSHELL_ERROR
 } wallshell_stream;
+
 void setStream(wallshell_stream type, FILE* stream);
 
 /* General operations */

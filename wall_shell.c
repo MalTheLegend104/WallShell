@@ -9,6 +9,9 @@
 	#include <Windows.h>
 #endif
 
+// For some systems (mostly POSIX), backspace gets sent as ascii delete rather than \b
+bool backspace_as_ascii_delete = false;
+
 /**
  * @brief Internal function to concat a single char to the end of a string.
  * If the string is already at max length (including room for '\0') then the string is returned unchanged.
@@ -58,6 +61,11 @@ void initializeDefaultStreams() {
 }
 
 #ifndef CUSTOM_CONSOLE_SETUP
+	#ifndef _WIN32
+		#include <termios.h>
+		#include <unistd.h>
+struct termios old_settings, new_settings;
+	#endif // _WIN32
 wallshell_error_t setConsoleMode() {
 #ifdef _WIN32
 	// Set output mode to handle virtual terminal sequences
@@ -91,9 +99,40 @@ wallshell_error_t setConsoleMode() {
 		// Failed to set VT input mode, can't do anything here.
 		return WALLSHELL_CONSOLE_SETUP_ERROR;
 	}
-#endif
+	
+	// Disable a few features that make a command handler hard to make
+	DWORD inMode = 0;
+	if (!GetConsoleMode(hIn, &inMode)) { return WALLSHELL_CONSOLE_SETUP_ERROR; }
+	inMode &= ~ENABLE_LINE_INPUT;
+	inMode &= ~ENABLE_PROCESSED_INPUT;
+	inMode &= ~ENABLE_ECHO_INPUT;
+	if (!SetConsoleMode(hIn, inMode)) { return WALLSHELL_CONSOLE_SETUP_ERROR; }
+#else
+	// POSIX terminals support
+	tcgetattr(STDIN_FILENO, &old_settings);
+	new_settings = old_settings;
+	new_settings.c_lflag &= ~(ICANON | ECHO | IEXTEN); // Disable canonical mode and echo
+	
+	// posix terminals send ASCII delete instead of backspace for some godforsaken reason
+	backspace_as_ascii_delete = true;
+	tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
+#endif // _WIN32
 	return WALLSHELL_NO_ERROR;
 }
+
+void resetConsoleState() {
+#ifndef _WIN32
+	// Restore original terminal settings
+	tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
+#endif // _WIN32
+}
+	
+	#ifdef _WIN32
+		#include <conio.h>
+		#define wallshell_get_char(stream) _getch()
+	#else
+		#define wallshell_get_char(stream) getchar()
+	#endif // _WIN32
 #endif // CUSTOM_CONSOLE_SETUP
 
 // ------------------------------------------------------------------------------------------------
@@ -260,7 +299,6 @@ wallshell_error_t terminalMain() {
 	if (!commands) commands = malloc(sizeof(command_t));
 	if (!commands) return WALLSHELL_OUT_OF_MEMORY;
 	
-	
 	bool newCommand = true;
 	bool tabPressed = false; // allows for autocompletion
 	
@@ -279,13 +317,17 @@ wallshell_error_t terminalMain() {
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
 		}
 		
-		int current = fgetc(wallshell_in_stream);
-		if (current == '\n') {
+		int current = wallshell_get_char(wallshell_in_stream);
+		if (backspace_as_ascii_delete && current == 0x7f)
+			current = '\b';
+		//printf("%c - %d\n", current, current); // useful for debugging your wallshell_get_char
+		if (current == '\n' || current == '\r') {
 			// If there's an empty command we just start a new line.
 			if (strlen(commandBuf) == 0) {
 				newCommand = true;
 				continue;
 			}
+			fprintf(wallshell_out_stream, "\n");
 			
 			// Move everything right in the previous buf
 			if (previous_commands_size > 0) {
@@ -310,7 +352,6 @@ wallshell_error_t terminalMain() {
 		} else if (current == '\b') {
 			if (strlen(commandBuf) > 0) {
 				// Remove the last character by setting it to null terminator
-				printf("%c", current);
 				commandBuf[strlen(commandBuf) - 1] = '\0';
 				// We also need to clear the character from the terminal. This is a little cursed.
 				// It uses delete to move the cursor back one, prints a space to make sure it's cleared, the goes back one again.
@@ -324,10 +365,16 @@ wallshell_error_t terminalMain() {
 			// Temporarily for development’s sake, this is how you exit the console.
 			// ctrl+d on unix, ctrl+z on windows
 			break;
+			//} else if (current == '\r') {
+			//	enterPressed = true;
 		} else {
+			fprintf(wallshell_out_stream, "%c", current);
 			wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
 		}
 	}
+#ifndef CUSTOM_CONSOLE_SETUP
+	resetConsoleState();
+#endif // CUSTOM_CONSOLE_SETUP
 	return WALLSHELL_NO_ERROR;
 }
 
