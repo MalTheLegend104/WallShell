@@ -166,11 +166,9 @@ void changeConsoleColor(console_fg_color_t fg, console_bg_color_t bg) {
 #ifdef DISABLE_MALLOC
 command_t commands[COMMAND_LIMIT];
 size_t command_size = COMMAND_LIMIT;
-	#define MALLOC_DISABLED true
 #else
 command_t* commands;
 size_t command_size = 0;
-	#define MALLOC_DISABLED false
 #endif
 
 size_t current_command_spot = 0;
@@ -249,16 +247,20 @@ wallshell_error_t registerCommand(const command_t c) {
 		return WALLSHELL_COMMAND_LIMIT_REACHED;
 	}
 #else
-	if (!commands)
+	if (!commands) {
 		commands = malloc(sizeof(command_t));
-	else if (current_command_spot > command_size) {
+		command_size = 1;
+	} else if (current_command_spot > command_size) {
 		// realloc invalidates the old pointer on call, but leaves it alone if it cant find the memory.
 		// If this function returns with an out of memory error, the shell is still usable.
 		command_t* new_ptr = realloc(commands, (size_t) (command_size * sizeof(command_t) * 1.5));
 		if (!new_ptr) return WALLSHELL_OUT_OF_MEMORY;
 		else commands = new_ptr;
+		command_size = (size_t) (command_size * 1.5);
 	}
+	//memcpy(commands[current_command_spot], &c, sizeof(command_t));
 	commands[current_command_spot] = c;
+	current_command_spot++;
 #endif
 	return WALLSHELL_NO_ERROR;
 }
@@ -267,14 +269,93 @@ void deregisterCommand(const command_t c) {
 
 }
 
-void executeCommand(char* commandBuf) {
-	fprintf(wallshell_out_stream, "Command buf: %s", commandBuf);
+int test(int argc, char** argv) {
+	fprintf(wallshell_out_stream, "ooga booga: %s\n", argv[0]);
+	for(int i = 0; i < argc; i++) {
+		fprintf(wallshell_out_stream, "\t%s\n", argv[i]);
+	}
+	return -1;
 }
 
 void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
+	command_t c = { test, NULL, "test", NULL, 0 };
+	registerCommand(c);
 }
+
+#ifdef DISABLE_MALLOC
+wallshell_error_t executeCommand(char* commandBuf) {
+//  int argc = 0;
+//	char argv[MAX_ARGS][MAX_COMMAND_BUF];
+	return WALLSHELL_NO_ERROR;
+}
+#else
+wallshell_error_t executeCommand(char* commandBuf) {
+	// We treat this like system execution does with int argc & char** argv.
+	// argv[0] is always the command name, argc always is at least 1 because of this
+	int argc = 0;
+	char** argv = NULL;
+	char* current = strtok(commandBuf, " ");
+	
+	while(current != NULL) {
+		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
+		if (!newptr) {
+			if (argv){
+				// free each string allocated by strdup
+				for(int i = 0; i < argc; i++) free(argv[i]);
+				free(argv);
+			}
+			return WALLSHELL_OUT_OF_MEMORY;
+		} else {
+			argv = newptr;
+		}
+		// allocates memory for the string and copies it
+		argv[argc] = strdup(current);
+		current = strtok(NULL, " ");
+		argc++;
+	}
+	if (argc == 0) {
+		// Somehow got an empty command.
+		if (argv) free(argv);
+		return WALLSHELL_NO_ERROR;
+	}
+	
+	// Call Command (if it exists)
+	for (size_t i = 0; i < command_size; i++) {
+		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0){
+			int result = commands[i].mainCommand(argc, argv);
+			if (result != 0) {
+				// If the command function returns a non-zero value, it may indicate an error
+				printf("Command exited with code: %d\n", result);
+			}
+			goto cleanup;
+		}
+		
+		// Check that commands alias
+		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+			if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
+				int result = commands[i].mainCommand(argc, argv);
+				if (result != 0) {
+					// If the command function returns a non-zero value, it may indicate an error
+					printf("Command exited with code: %d\n", result);
+				}
+				goto cleanup;
+			}
+		}
+	}
+	printf("Command not found: \"%s\"\n", argv[0]);
+	
+cleanup:
+	for(int i = 0; i < argc; i++) free(argv[i]);
+	free(argv);
+	return WALLSHELL_NO_ERROR;
+}
+#endif // DISABLE_MALLOC
+
+const char* prefix = "> ";
+
+void setConsolePrefix(const char* newPrefix){ prefix = newPrefix; }
 
 wallshell_error_t terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
@@ -309,7 +390,7 @@ wallshell_error_t terminalMain() {
 	
 	while (true) {
 		if (newCommand) {
-			fprintf(wallshell_out_stream, "\n%s ", SHELL_COMMAND_PREFIX);
+			fprintf(wallshell_out_stream, "%s", prefix);
 			newCommand = false;
 			tabPressed = false;
 			position_in_previous = 0;
@@ -356,6 +437,8 @@ wallshell_error_t terminalMain() {
 				// We also need to clear the character from the terminal. This is a little cursed.
 				// It uses delete to move the cursor back one, prints a space to make sure it's cleared, the goes back one again.
 				// If I implement a better cursor system this will likely get changed later.
+
+				// Expected behavior is backspace moves the cursor back one, prints a space, then moves it back again.
 				fprintf(wallshell_out_stream, "\b \b");
 			}
 		} else if (current == '\t') {

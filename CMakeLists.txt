@@ -5,6 +5,7 @@ set(CMAKE_C_STANDARD 99)
 
 add_executable(WallShell
 		main.c
-		wall_shell.c
 		wall_shell.h
+		wall_shell.c
+		wallshell_config.h
 )

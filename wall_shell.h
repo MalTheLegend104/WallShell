@@ -18,6 +18,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+/* Config Header */
+#include "wallshell_config.h"
+
 /*********************************************************************************
  * Check for user definitions
  *********************************************************************************/
@@ -30,7 +33,7 @@
 #endif // MAX_COMMAND_BUF
 
 #ifndef SHELL_COMMAND_PREFIX
-	#define SHELL_COMMAND_PREFIX ">"
+	#define SHELL_COMMAND_PREFIX "> "
 #endif // SHELL_COMMAND_PREFIX
 
 #ifdef THREADED_SUPPORT
@@ -173,7 +176,7 @@ void setStream(wallshell_stream type, FILE* stream);
 /* General operations */
 wallshell_error_t registerCommand(const command_t c);
 void deregisterCommand(const command_t c);
-void executeCommand(char* commandBuf);
+wallshell_error_t executeCommand(char* commandBuf);
 wallshell_error_t terminalMain();
 
 /* Utility functions */
@@ -181,6 +184,8 @@ void printGeneralHelp(help_entry_general_t* entry);
 void printSpecificHelp(help_entry_specific_t* entry);
 void setConsoleLocale();
 void initializeDefaultStreams();
+
+void setConsolePrefix(const char* newPrefix);
 
 bool compareCommands(const command_t c1, const command_t c2);
 #endif // COMMAND_HANDLER_H
