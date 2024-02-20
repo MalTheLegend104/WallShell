@@ -7,7 +7,7 @@
  * @version v1.0
  */
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef WALLSHELL_CONFIG_H
+#define WALLSHELL_CONFIG_H
 
-#endif // CONFIG_H
+#endif // WALLSHELL_CONFIG_H

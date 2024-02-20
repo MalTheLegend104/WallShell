@@ -9,6 +9,14 @@
 	#include <Windows.h>
 #endif
 
+// Thank you  microsoft for making my life harder
+#ifdef _MSC_VER
+// Disables the warning for string.h "deprecated" functions
+// We're in C99, and the stuff we're touching should either be manually mutex locked or single threaded anyway.
+// Commands that are outside the scope of this file should be properly mutex locked if they touch things running in other threads.
+#pragma warning(disable : 4996)
+#endif
+
 // For some systems (mostly POSIX), backspace gets sent as ascii delete rather than \b
 bool backspace_as_ascii_delete = false;
 
@@ -141,7 +149,6 @@ void resetConsoleState() {
 #ifndef CUSTOM_CONSOLE_COLORS
 	#ifdef _WIN32
 /* I'm trying to include the least amount of windows headers as possible */
-		#include <Windows.h>
 		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
 	#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
 		#define SET_TERMINAL_LOCALE
@@ -253,10 +260,10 @@ wallshell_error_t registerCommand(const command_t c) {
 	} else if (current_command_spot > command_size) {
 		// realloc invalidates the old pointer on call, but leaves it alone if it cant find the memory.
 		// If this function returns with an out of memory error, the shell is still usable.
-		command_t* new_ptr = realloc(commands, (size_t) (command_size * sizeof(command_t) * 1.5));
+		command_t* new_ptr = realloc(commands, (size_t) ((double) command_size * sizeof(command_t) * 1.5));
 		if (!new_ptr) return WALLSHELL_OUT_OF_MEMORY;
 		else commands = new_ptr;
-		command_size = (size_t) (command_size * 1.5);
+		command_size = (size_t) ((double) command_size * 1.5);
 	}
 	//memcpy(commands[current_command_spot], &c, sizeof(command_t));
 	commands[current_command_spot] = c;
@@ -271,7 +278,7 @@ void deregisterCommand(const command_t c) {
 
 int test(int argc, char** argv) {
 	fprintf(wallshell_out_stream, "ooga booga: %s\n", argv[0]);
-	for(int i = 0; i < argc; i++) {
+	for (int i = 0; i < argc; i++) {
 		fprintf(wallshell_out_stream, "\t%s\n", argv[i]);
 	}
 	return -1;
@@ -280,7 +287,7 @@ int test(int argc, char** argv) {
 void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
-	command_t c = { test, NULL, "test", NULL, 0 };
+	command_t c = {test, NULL, "test", NULL, 0};
 	registerCommand(c);
 }
 
@@ -298,12 +305,12 @@ wallshell_error_t executeCommand(char* commandBuf) {
 	char** argv = NULL;
 	char* current = strtok(commandBuf, " ");
 	
-	while(current != NULL) {
+	while (current != NULL) {
 		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
 		if (!newptr) {
-			if (argv){
+			if (argv) {
 				// free each string allocated by strdup
-				for(int i = 0; i < argc; i++) free(argv[i]);
+				for (int i = 0; i < argc; i++) free(argv[i]);
 				free(argv);
 			}
 			return WALLSHELL_OUT_OF_MEMORY;
@@ -311,7 +318,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 			argv = newptr;
 		}
 		// allocates memory for the string and copies it
-		argv[argc] = strdup(current);
+		argv[argc] = _strdup(current);
 		current = strtok(NULL, " ");
 		argc++;
 	}
@@ -323,7 +330,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 	
 	// Call Command (if it exists)
 	for (size_t i = 0; i < command_size; i++) {
-		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0){
+		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
 			int result = commands[i].mainCommand(argc, argv);
 			if (result != 0) {
 				// If the command function returns a non-zero value, it may indicate an error
@@ -345,22 +352,22 @@ wallshell_error_t executeCommand(char* commandBuf) {
 		}
 	}
 	printf("Command not found: \"%s\"\n", argv[0]);
-	
 cleanup:
-	for(int i = 0; i < argc; i++) free(argv[i]);
+	for (int i = 0; i < argc; i++) free(argv[i]);
 	free(argv);
 	return WALLSHELL_NO_ERROR;
 }
 #endif // DISABLE_MALLOC
 
+// Default prefix
 const char* prefix = "> ";
 
-void setConsolePrefix(const char* newPrefix){ prefix = newPrefix; }
+void setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
 
 wallshell_error_t terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
 	/* We're also assuming the colors have been defined, even if they are blank. */
-#ifndef NO_BASIC_COMMMANDS
+#ifndef NO_BASIC_COMMANDS
 	registerBasicCommands();
 #endif
 	
@@ -381,9 +388,9 @@ wallshell_error_t terminalMain() {
 	if (!commands) return WALLSHELL_OUT_OF_MEMORY;
 	
 	bool newCommand = true;
-	bool tabPressed = false; // allows for autocompletion
+	// bool tabPressed = false; // allows for autocompletion
 	
-	size_t position_in_previous = 0;
+	// size_t position_in_previous = 0;
 	
 	char commandBuf[MAX_COMMAND_BUF];
 	char oldCommand[MAX_COMMAND_BUF];
@@ -392,8 +399,8 @@ wallshell_error_t terminalMain() {
 		if (newCommand) {
 			fprintf(wallshell_out_stream, "%s", prefix);
 			newCommand = false;
-			tabPressed = false;
-			position_in_previous = 0;
+			// tabPressed = false;
+			// position_in_previous = 0;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
 		}
@@ -404,11 +411,11 @@ wallshell_error_t terminalMain() {
 		//printf("%c - %d\n", current, current); // useful for debugging your wallshell_get_char
 		if (current == '\n' || current == '\r') {
 			// If there's an empty command we just start a new line.
+			fprintf(wallshell_out_stream, "\n");
 			if (strlen(commandBuf) == 0) {
 				newCommand = true;
 				continue;
 			}
-			fprintf(wallshell_out_stream, "\n");
 			
 			// Move everything right in the previous buf
 			if (previous_commands_size > 0) {
@@ -437,7 +444,7 @@ wallshell_error_t terminalMain() {
 				// We also need to clear the character from the terminal. This is a little cursed.
 				// It uses delete to move the cursor back one, prints a space to make sure it's cleared, the goes back one again.
 				// If I implement a better cursor system this will likely get changed later.
-
+				
 				// Expected behavior is backspace moves the cursor back one, prints a space, then moves it back again.
 				fprintf(wallshell_out_stream, "\b \b");
 			}
@@ -492,9 +499,77 @@ bool compareCommands(const command_t c1, const command_t c2) {
 void setConsoleLocale() { SET_TERMINAL_LOCALE; }
 
 void printGeneralHelp(help_entry_general_t* entry) {
-
+	// Command Name
+	setConsoleColors((console_color_t) {CONSOLE_FG_RED, CONSOLE_BG_DEFAULT});
+	if (entry->commandName)
+		fprintf(wallshell_out_stream, "\n%s\n", entry->commandName);
+	
+	// Description
+	setConsoleColors((console_color_t) {CONSOLE_FG_CYAN, CONSOLE_BG_DEFAULT});
+	if (entry->description)
+		fprintf(wallshell_out_stream, "%s\n", entry->description);
+	
+	// Commands
+	if (entry->commands_count > 0) {
+		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+		fprintf(wallshell_out_stream, "\nCommands:\n");
+		
+		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
+		for (int i = 0; i < entry->commands_count; i++) {
+			if (entry->commands[i])
+				fprintf(wallshell_out_stream, "  %s\n", entry->commands[i]);
+		}
+	}
+	
+	// Aliases
+	if (entry->aliases_count > 0) {
+		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+		fprintf(wallshell_out_stream, "\nAliases:\n");
+		
+		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
+		for (int i = 0; i < entry->aliases_count; i++) {
+			if (entry->aliases[i])
+				fprintf(wallshell_out_stream, "  %s\n", entry->aliases[i]);
+		}
+	}
+	setConsoleColors((console_color_t) {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT});
+	fprintf(wallshell_out_stream, "\n");
 }
 
 void printSpecificHelp(help_entry_specific_t* entry) {
-
+	// Command Name
+	setConsoleColors((console_color_t) {CONSOLE_FG_RED, CONSOLE_BG_DEFAULT});
+	if (entry->commandName)
+		printf("\n%s\n", entry->commandName);
+	
+	// Description
+	setConsoleColors((console_color_t) {CONSOLE_FG_CYAN, CONSOLE_BG_DEFAULT});
+	if (entry->description)
+		printf("%s\n", entry->description);
+	
+	// Commands
+	if (entry->required_count > 0) {
+		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+		printf("Required:\n");
+		
+		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
+		for (int i = 0; i < entry->required_count; i++) {
+			if (entry->required[i])
+				printf("  %s\n", entry->required[i]);
+		}
+	}
+	
+	// Aliases
+	if (entry->optional_count > 0) {
+		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+		printf("\nOptional:\n");
+		
+		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
+		for (int i = 0; i < entry->optional_count; i++) {
+			if (entry->optional[i])
+				printf("  %s\n", entry->optional[i]);
+		}
+	}
+	setConsoleColors((console_color_t) {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT});
+	printf("\n");
 }
