@@ -50,13 +50,6 @@
 	#endif
 #endif // DISABLE_MALLOC
 
-// ------------------------------------------------------------------------------------------------
-// If the user hasn't defined streams, set the defaults.
-// ------------------------------------------------------------------------------------------------
-#ifndef NO_STD_STREAMS
-
-#endif // NO_STD_STREAMS
-
 typedef enum {
 	WALLSHELL_NO_ERROR = 0,
 	WALLSHELL_OUT_OF_MEMORY,

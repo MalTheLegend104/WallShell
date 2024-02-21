@@ -119,7 +119,7 @@ wallshell_error_t setConsoleMode() {
 	// POSIX terminals support
 	tcgetattr(STDIN_FILENO, &old_settings);
 	new_settings = old_settings;
-	new_settings.c_lflag &= ~(ICANON | ECHO | IEXTEN); // Disable canonical mode and echo
+	new_settings.c_lflag &= ~(ICANON | ECHO | IEXTEN);
 	
 	// posix terminals send ASCII delete instead of backspace for some godforsaken reason
 	backspace_as_ascii_delete = true;
@@ -134,12 +134,14 @@ void resetConsoleState() {
 	tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
 #endif // _WIN32
 }
-	
+
 	#ifdef _WIN32
 		#include <conio.h>
+		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
 		#define wallshell_get_char(stream) _getch()
 	#else
 		#define wallshell_get_char(stream) getchar()
+		#define SET_TERMINAL_LOCALE
 	#endif // _WIN32
 #endif // CUSTOM_CONSOLE_SETUP
 
@@ -318,7 +320,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 			argv = newptr;
 		}
 		// allocates memory for the string and copies it
-		argv[argc] = _strdup(current);
+		argv[argc] = strdup(current);
 		current = strtok(NULL, " ");
 		argc++;
 	}
