@@ -150,9 +150,9 @@ typedef struct {
 /* Console Color Configuration */
 console_color_t getCurrentColors();
 console_color_t getDefaultColors();
-wallshell_error_t setConsoleDefaults(console_color_t c);
-wallshell_error_t setConsoleForegroundDefault(console_fg_color_t c);
-wallshell_error_t setConsoleBackgroundDefault(console_bg_color_t c);
+void setConsoleDefaults(console_color_t c);
+void setConsoleForegroundDefault(console_fg_color_t c);
+void setConsoleBackgroundDefault(console_bg_color_t c);
 wallshell_error_t setForegroundColor(console_fg_color_t color);
 wallshell_error_t setBackgroundColor(console_bg_color_t color);
 wallshell_error_t setConsoleColors(console_color_t colors);

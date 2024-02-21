@@ -3,8 +3,7 @@
 int main() {
 	setConsolePrefix("> ");
 	setConsoleLocale();
-	console_color_t colors = {CONSOLE_FG_MAGENTA, CONSOLE_BG_DEFAULT};
-	printf("%d\n", setConsoleDefaults(colors));
-	printf("%d - %d\n", getDefaultColors().foreground, getDefaultColors().background);
+	console_color_t colors = { CONSOLE_FG_MAGENTA, CONSOLE_BG_DEFAULT };
+	setConsoleDefaults(colors);
 	terminalMain();
 }

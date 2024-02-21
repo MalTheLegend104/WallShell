@@ -160,7 +160,17 @@ void resetConsoleState() {
 	#define RESET_CONSOLE                   fprintf(wallshell_out_stream, "\033[0m")
 
 void changeConsoleColor(console_fg_color_t fg, console_bg_color_t bg) {
-	fprintf(wallshell_out_stream, "\033[%d;%dm", fg, bg);
+	if (fg == CONSOLE_FG_DEFAULT || bg == CONSOLE_BG_DEFAULT) {
+		RESET_CONSOLE;
+	}
+	
+	if (fg == CONSOLE_FG_DEFAULT && bg != CONSOLE_BG_DEFAULT){
+		fprintf(wallshell_out_stream, "\033[%dm", bg);
+	} else if (fg != CONSOLE_FG_DEFAULT && bg == CONSOLE_BG_DEFAULT){
+		fprintf(wallshell_out_stream, "\033[%dm", fg);
+	} else {
+		fprintf(wallshell_out_stream, "\033[%d;%dm", fg, bg);
+	}
 }
 	
 	#define SET_CONSOLE_COLORS(a, b) changeConsoleColor(a, b);
@@ -181,6 +191,7 @@ size_t command_size = 0;
 #endif
 
 size_t current_command_spot = 0;
+size_t amount_of_commands;
 
 char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
 size_t previous_commands_size;
@@ -194,7 +205,6 @@ console_color_t current_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
 wallshell_error_t updateColors() {
 	if (!wallshell_out_stream) return WALLSHELL_OUT_STREAM_NOT_SET;
 	if (current_colors.foreground == CONSOLE_FG_DEFAULT) {
-		// It's guaranteed that the user cant set default_colors.foreground to CONSOLE_FG_DEFAULT
 		current_colors.foreground = default_colors.foreground;
 	}
 	if (current_colors.background == CONSOLE_BG_DEFAULT) {
@@ -204,22 +214,16 @@ wallshell_error_t updateColors() {
 	return WALLSHELL_NO_ERROR;
 }
 
-wallshell_error_t setConsoleForegroundDefault(console_fg_color_t c) {
-	if (c == CONSOLE_FG_DEFAULT) return WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT;
+void setConsoleForegroundDefault(console_fg_color_t c) {
 	default_colors.foreground = c;
-	return WALLSHELL_NO_ERROR;
 }
-wallshell_error_t setConsoleBackgroundDefault(console_bg_color_t c) {
-	if (c == CONSOLE_BG_DEFAULT) return WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT;
+void setConsoleBackgroundDefault(console_bg_color_t c) {
 	default_colors.background = c;
-	return WALLSHELL_NO_ERROR;
 }
-wallshell_error_t setConsoleDefaults(console_color_t c) {
-	wallshell_error_t ret;
-	ret = setConsoleForegroundDefault(c.foreground);
-	if (ret == WALLSHELL_NO_ERROR)
-		ret = setConsoleBackgroundDefault(c.background);
-	return ret;
+
+void setConsoleDefaults(console_color_t c) {
+	setConsoleForegroundDefault(c.foreground);
+	setConsoleBackgroundDefault(c.background);
 }
 
 console_color_t getCurrentColors() { return current_colors; }
@@ -231,15 +235,11 @@ wallshell_error_t setConsoleColors(console_color_t colors) {
 	return updateColors();
 }
 wallshell_error_t setForegroundColor(console_fg_color_t color) {
-	if (current_colors.foreground == CONSOLE_FG_DEFAULT)
-		current_colors.foreground = default_colors.foreground;
-	else current_colors.foreground = color;
+	current_colors.foreground = color;
 	return updateColors();
 }
 wallshell_error_t setBackgroundColor(console_bg_color_t color) {
-	if (current_colors.background == CONSOLE_BG_DEFAULT)
-		current_colors.background = default_colors.background;
-	else current_colors.background = color;
+	current_colors.background = color;
 	return updateColors();
 }
 
@@ -259,12 +259,22 @@ wallshell_error_t registerCommand(const command_t c) {
 	if (!commands) {
 		commands = malloc(sizeof(command_t));
 		command_size = 1;
-	} else if (current_command_spot > command_size) {
+	} else if (current_command_spot >= command_size) {
+		bool was_one =false;
+		if (command_size == 1) {
+			was_one = true;
+			command_size++;
+		}
 		// realloc invalidates the old pointer on call, but leaves it alone if it cant find the memory.
 		// If this function returns with an out of memory error, the shell is still usable.
 		command_t* new_ptr = realloc(commands, (size_t) ((double) command_size * sizeof(command_t) * 1.5));
-		if (!new_ptr) return WALLSHELL_OUT_OF_MEMORY;
-		else commands = new_ptr;
+		if (!new_ptr) {
+			if (was_one)
+				command_size--;
+			return WALLSHELL_OUT_OF_MEMORY;
+		} else {
+			commands = new_ptr;
+		}
 		command_size = (size_t) ((double) command_size * 1.5);
 	}
 	//memcpy(commands[current_command_spot], &c, sizeof(command_t));
@@ -286,11 +296,27 @@ int test(int argc, char** argv) {
 	return -1;
 }
 
+int clear(int argc, char** argv) {
+#ifdef _WIN32
+// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
+// This is especially evident in things spawned by AllocConsole()
+system("cls");
+#else
+// Unix is much nicer
+	printf("\033c");
+#endif
+return 0;
+}
+
+// Define the aliases for basic commands.
+// We dont use malloc because we dont want to deal with having to free anything
+// WallShell wants just the pointers, cleaning it up is the user's responsibility
+const char* clear_aliases[] = { "clr", "cls" };
 void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
-	command_t c = {test, NULL, "test", NULL, 0};
-	registerCommand(c);
+	registerCommand((command_t) {test, NULL, "test", NULL, 0});
+	registerCommand((command_t) { clear, NULL, "clear", clear_aliases, 2});
 }
 
 #ifdef DISABLE_MALLOC
@@ -331,7 +357,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 	}
 	
 	// Call Command (if it exists)
-	for (size_t i = 0; i < command_size; i++) {
+	for (size_t i = 0; i < current_command_spot; i++) {
 		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
 			int result = commands[i].mainCommand(argc, argv);
 			if (result != 0) {
