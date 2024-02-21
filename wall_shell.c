@@ -318,7 +318,7 @@ int clearHelp(int argc, char** argv) {
 	printGeneralHelp(&entry);
 	return 0;
 }
-int clear(int argc, char** argv) {
+int clearMain(int argc, char** argv) {
 #ifdef _WIN32
 	// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
 	// This is especially evident in things spawned by AllocConsole()
@@ -472,6 +472,29 @@ int helpMain(int argc, char** argv) {
 	return 0;
 }
 
+const char* history_aliases[] = {"hist"};
+int historyHelp(int argc, char** argv) {
+	help_entry_general_t entry = {
+			"History",
+			"Displays the terminal history. Limit of 32 previous commands.",
+			NULL,
+			0,
+			history_aliases,
+			1
+	};
+	printGeneralHelp(&entry);
+	return 0;
+}
+
+int historyMain(int argc, char** argv) {
+	setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+	for (size_t i = 0; i < previous_commands_size; i++) {
+		printf("%s\n", previousCommands[i]);
+	}
+	setConsoleColors(getDefaultColors());
+	return 0;
+}
+
 // We static define the aliases for basic commands.
 // We dont use malloc because we dont want to deal with having to free anything
 // WallShell wants just the pointers, cleaning it up is the user's responsibility
@@ -479,8 +502,9 @@ void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 	registerCommand((command_t) {test, NULL, "test", NULL, 0});
-	registerCommand((command_t) {clear, clearHelp, "clear", clear_aliases, 2});
+	registerCommand((command_t) {clearMain, clearHelp, "clear", clear_aliases, 2});
 	registerCommand((command_t) {helpMain, helpHelp, "help", NULL, 0});
+	registerCommand((command_t) {historyMain, historyHelp, "history", history_aliases, 1});
 }
 
 #ifdef DISABLE_MALLOC
@@ -526,6 +550,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 			int result = commands[i].mainCommand(argc, argv);
 			if (result != 0) {
 				// If the command function returns a non-zero value, it may indicate an error
+				setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
 				fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
 			}
 			goto cleanup;
@@ -537,16 +562,19 @@ wallshell_error_t executeCommand(char* commandBuf) {
 				int result = commands[i].mainCommand(argc, argv);
 				if (result != 0) {
 					// If the command function returns a non-zero value, it may indicate an error
+					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
 					fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
 				}
 				goto cleanup;
 			}
 		}
 	}
+	setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
 	fprintf(wallshell_out_stream, "Command not found: \"%s\"\n", argv[0]);
 cleanup:
 	for (int i = 0; i < argc; i++) free(argv[i]);
 	free(argv);
+	setConsoleColors(getDefaultColors());
 	return WALLSHELL_NO_ERROR;
 }
 #endif // DISABLE_MALLOC
