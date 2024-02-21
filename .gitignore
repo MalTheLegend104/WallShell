@@ -78,3 +78,11 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
+/.idea/
+
+/cmake-build-debug/
+/cmake-build-debug-mingw/
+/cmake-build-debug-wsl/
+/cmake-build-release/
+/cmake-build-release-mingw/
+/cmake-build-release-wsl/
