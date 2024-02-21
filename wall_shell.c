@@ -143,7 +143,7 @@ void resetConsoleState() {
 	tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
 #endif // _WIN32
 }
-
+	
 	#ifdef _WIN32
 		#include <conio.h>
 		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
@@ -173,9 +173,9 @@ void changeConsoleColor(console_fg_color_t fg, console_bg_color_t bg) {
 		RESET_CONSOLE;
 	}
 	
-	if (fg == CONSOLE_FG_DEFAULT && bg != CONSOLE_BG_DEFAULT){
+	if (fg == CONSOLE_FG_DEFAULT && bg != CONSOLE_BG_DEFAULT) {
 		fprintf(wallshell_out_stream, "\033[%dm", bg);
-	} else if (fg != CONSOLE_FG_DEFAULT && bg == CONSOLE_BG_DEFAULT){
+	} else if (fg != CONSOLE_FG_DEFAULT && bg == CONSOLE_BG_DEFAULT) {
 		fprintf(wallshell_out_stream, "\033[%dm", fg);
 	} else {
 		fprintf(wallshell_out_stream, "\033[%d;%dm", fg, bg);
@@ -269,7 +269,7 @@ wallshell_error_t registerCommand(const command_t c) {
 		commands = malloc(sizeof(command_t));
 		command_size = 1;
 	} else if (current_command_spot >= command_size) {
-		bool was_one =false;
+		bool was_one = false;
 		if (command_size == 1) {
 			was_one = true;
 			command_size++;
@@ -305,6 +305,19 @@ int test(int argc, char** argv) {
 	return -1;
 }
 
+const char* clear_aliases[] = {"clr", "cls"};
+int clearHelp(int argc, char** argv) {
+	help_entry_general_t entry = {
+			"Clear",
+			"Clears the screen",
+			NULL,
+			0,
+			clear_aliases,
+			2
+	};
+	printGeneralHelp(&entry);
+	return 0;
+}
 int clear(int argc, char** argv) {
 #ifdef _WIN32
 	// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
@@ -312,22 +325,162 @@ int clear(int argc, char** argv) {
 	system("cls");
 #else
 	// Unix is much nicer
-	printf("\033c");
+	fprintf(wallshell_out_stream, "\033c");
 #endif
 	// Sometimes clearing the screen results in the colors getting reset.
 	updateColors();
 	return 0;
 }
 
-// Define the aliases for basic commands.
+bool wallshell_internal_startsWith(const char* str, const char* prefix) {
+	while (*prefix) {
+		if (*prefix != *str) {
+			return false;
+		}
+		prefix++;
+		str++;
+	}
+	return true;
+}
+
+void helpSearch(char* str) {
+	setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+	fprintf(wallshell_out_stream, "List of commands starting with \"%s\": (A) indicates an alias.\n", str);
+	setConsoleColors(getDefaultColors());
+	for (int i = 0; i < current_command_spot; i++) {
+		setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_GREEN, CONSOLE_BG_DEFAULT});
+		if (commands[i].commandName && wallshell_internal_startsWith(commands[i].commandName, str)) {
+			fprintf(wallshell_out_stream, "\t%s\n", commands[i].commandName);
+		}
+		
+		// Check aliases for a match
+		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+			if (commands[i].aliases[alias_idx] && wallshell_internal_startsWith(commands[i].aliases[alias_idx], str)) {
+				fprintf(wallshell_out_stream, "\t%s (A)\n", commands[i].aliases[alias_idx]);
+			}
+		}
+		setConsoleColors(getDefaultColors());
+	}
+}
+
+int helpHelp(int argc, char** argv) {
+	const char* optional[] = {
+			"-s <string> -> Lists all commands and aliases that start with <string>."
+	};
+	help_entry_specific_t entry = {
+			"Help",
+			"The help menu.",
+			NULL,
+			0,
+			optional,
+			1
+	};
+	printSpecificHelp(&entry);
+	return 0;
+}
+int helpMain(int argc, char** argv) {
+	// Make sure there's more than one argument.
+	if (argc > 1) {
+		// remove help from argv
+		// Shift all pointers one position to the left
+		for (int i = 1; i < argc; i++) {
+			argv[i - 1] = argv[i];
+		}
+		argv[argc - 1] = NULL;
+		
+		// Update the size of the array
+		argc--;
+		// Check for more args
+		if (argc >= 1) {
+			if ((strcmp(argv[0], "-s") == 0) || (strcmp(argv[0], "-search") == 0)) {
+				if (argc == 1) {
+					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+					fprintf(wallshell_out_stream, "Search flag must be followed by an argument.\n");
+				} else {
+					helpSearch(argv[1]);
+					return 0;
+				}
+			}
+		}
+		
+		// Find the command
+		for (int i = 0; i < current_command_spot; i++) {
+			// Check the normal command name
+			if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
+				// No help function for command.
+				if (!commands[i].helpCommand) {
+					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+					fprintf(wallshell_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
+					setConsoleColors(getDefaultColors());
+					return 0;
+				}
+				
+				// Execute the help command associated with the matched command
+				int result = commands[i].helpCommand(argc, argv);
+				if (result != 0) {
+					// If the command function returns a non-zero value, it may indicate an error
+					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+					fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
+					setConsoleColors(getDefaultColors());
+				}
+				return 0;
+			}
+			
+			// Check aliases for a match
+			for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+				if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
+					// No help function for command.
+					if (!commands[i].helpCommand) {
+						setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+						fprintf(wallshell_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
+						setConsoleColors(getDefaultColors());
+						return 0;
+					}
+					
+					// Execute the help command associated with the matched alias
+					int result = commands[i].helpCommand(argc, argv);
+					if (result != 0) {
+						// If the command function returns a non-zero value, it may indicate an error
+						setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+						fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
+						setConsoleColors(getDefaultColors());
+					}
+					return 0;
+				}
+			}
+		}
+		// If the command is not found in the registered commands or their aliases
+		setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+		fprintf(wallshell_out_stream, "Help command not found for: %s\n", argv[0]);
+	} else {
+		fprintf(wallshell_out_stream, "\n");
+		setConsoleColors((console_color_t) {CONSOLE_FG_CYAN, CONSOLE_BG_DEFAULT});
+		fprintf(wallshell_out_stream, "To get more info about a command, run `help <command_name>`\n");
+		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+		fprintf(wallshell_out_stream, "All commands:\n");
+		
+		setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_GREEN, CONSOLE_BG_DEFAULT});
+		// List all available commands
+		for (int i = 0; i < current_command_spot; i++) {
+			if (commands[i].commandName) {
+				fprintf(wallshell_out_stream, "  %s\n", commands[i].commandName);
+			}
+		}
+		fprintf(wallshell_out_stream, "\n");
+	}
+	setConsoleColors(getDefaultColors());
+	return 0;
+}
+
+// We static define the aliases for basic commands.
 // We dont use malloc because we dont want to deal with having to free anything
 // WallShell wants just the pointers, cleaning it up is the user's responsibility
-const char* clear_aliases[] = { "clr", "cls" };
 void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 	registerCommand((command_t) {test, NULL, "test", NULL, 0});
-	registerCommand((command_t) { clear, NULL, "clear", clear_aliases, 2});
+	registerCommand((command_t) {clear, clearHelp, "clear", clear_aliases, 2});
+	registerCommand((command_t) {helpMain, helpHelp, "help", NULL, 0});
 }
 
 #ifdef DISABLE_MALLOC
@@ -373,7 +526,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 			int result = commands[i].mainCommand(argc, argv);
 			if (result != 0) {
 				// If the command function returns a non-zero value, it may indicate an error
-				printf("Command exited with code: %d\n", result);
+				fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
 			}
 			goto cleanup;
 		}
@@ -384,13 +537,13 @@ wallshell_error_t executeCommand(char* commandBuf) {
 				int result = commands[i].mainCommand(argc, argv);
 				if (result != 0) {
 					// If the command function returns a non-zero value, it may indicate an error
-					printf("Command exited with code: %d\n", result);
+					fprintf(wallshell_out_stream, "Command exited with code: %d\n", result);
 				}
 				goto cleanup;
 			}
 		}
 	}
-	printf("Command not found: \"%s\"\n", argv[0]);
+	fprintf(wallshell_out_stream, "Command not found: \"%s\"\n", argv[0]);
 cleanup:
 	for (int i = 0; i < argc; i++) free(argv[i]);
 	free(argv);
@@ -579,36 +732,36 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 	// Command Name
 	setConsoleColors((console_color_t) {CONSOLE_FG_RED, CONSOLE_BG_DEFAULT});
 	if (entry->commandName)
-		printf("\n%s\n", entry->commandName);
+		fprintf(wallshell_out_stream, "\n%s\n", entry->commandName);
 	
 	// Description
 	setConsoleColors((console_color_t) {CONSOLE_FG_CYAN, CONSOLE_BG_DEFAULT});
 	if (entry->description)
-		printf("%s\n", entry->description);
+		fprintf(wallshell_out_stream, "%s\n", entry->description);
 	
 	// Commands
 	if (entry->required_count > 0) {
 		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
-		printf("Required:\n");
+		fprintf(wallshell_out_stream, "Required:\n");
 		
 		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
 		for (int i = 0; i < entry->required_count; i++) {
 			if (entry->required[i])
-				printf("  %s\n", entry->required[i]);
+				fprintf(wallshell_out_stream, "  %s\n", entry->required[i]);
 		}
 	}
 	
 	// Aliases
 	if (entry->optional_count > 0) {
 		setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
-		printf("\nOptional:\n");
+		fprintf(wallshell_out_stream, "\nOptional:\n");
 		
 		setConsoleColors((console_color_t) {CONSOLE_FG_GREEN, CONSOLE_BG_DEFAULT});
 		for (int i = 0; i < entry->optional_count; i++) {
 			if (entry->optional[i])
-				printf("  %s\n", entry->optional[i]);
+				fprintf(wallshell_out_stream, "  %s\n", entry->optional[i]);
 		}
 	}
 	setConsoleColors((console_color_t) {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT});
-	printf("\n");
+	fprintf(wallshell_out_stream, "\n");
 }
