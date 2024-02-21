@@ -208,7 +208,7 @@ size_t previous_commands_size;
 // ------------------------------------------------------------------------------------------------
 // Console Color Configuration
 // ------------------------------------------------------------------------------------------------
-console_color_t default_colors = {CONSOLE_FG_BRIGHT_WHITE, CONSOLE_BG_BLACK};
+console_color_t default_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
 console_color_t current_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
 
 wallshell_error_t updateColors() {
