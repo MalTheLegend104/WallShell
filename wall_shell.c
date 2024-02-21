@@ -9,6 +9,15 @@
 	#include <Windows.h>
 #endif
 
+/* Disable unused parameter warnings. This only affects this file. */
+#ifdef __GNUC__ // Check if GCC is being used
+	#pragma GCC diagnostic ignored "-Wunused-parameter"
+#elif defined(__clang__) // Check if Clang is being used
+	#pragma clang diagnostic ignored "-Wunused-parameter"
+#elif defined(_MSC_VER) // Check if MSVC (Visual C++) is being used
+	#pragma warning(disable : 4100)
+#endif
+
 // Thank you  microsoft for making my life harder
 #ifdef _MSC_VER
 // Disables the warning for string.h "deprecated" functions
@@ -298,14 +307,16 @@ int test(int argc, char** argv) {
 
 int clear(int argc, char** argv) {
 #ifdef _WIN32
-// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
-// This is especially evident in things spawned by AllocConsole()
-system("cls");
+	// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
+	// This is especially evident in things spawned by AllocConsole()
+	system("cls");
 #else
-// Unix is much nicer
+	// Unix is much nicer
 	printf("\033c");
 #endif
-return 0;
+	// Sometimes clearing the screen results in the colors getting reset.
+	updateColors();
+	return 0;
 }
 
 // Define the aliases for basic commands.
