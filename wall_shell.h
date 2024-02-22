@@ -32,10 +32,6 @@
 	#define MAX_COMMAND_BUF 256
 #endif // MAX_COMMAND_BUF
 
-#ifndef SHELL_COMMAND_PREFIX
-	#define SHELL_COMMAND_PREFIX "> "
-#endif // SHELL_COMMAND_PREFIX
-
 #ifdef THREADED_SUPPORT
 // Add supported for threaded applications
 #endif // THREADED_SUPPORT

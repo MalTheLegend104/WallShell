@@ -502,9 +502,15 @@ void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 	registerCommand((command_t) {test, NULL, "test", NULL, 0});
+#ifndef NO_CLEAR_COMMAND
 	registerCommand((command_t) {clearMain, clearHelp, "clear", clear_aliases, 2});
+#endif // NO_CLEAR_COMMAND
+#ifndef NO_HELP_COMMAND
 	registerCommand((command_t) {helpMain, helpHelp, "help", NULL, 0});
+#endif // NO_HELP_COMMAND
+#ifndef NO_HISTORY_COMMAND
 	registerCommand((command_t) {historyMain, historyHelp, "history", history_aliases, 1});
+#endif // NO_HISTORY_COMMAND
 }
 
 wallshell_error_t executeCommand(char* commandBuf) {
@@ -589,8 +595,37 @@ cleanup:
 
 // Default prefix
 const char* prefix = "> ";
-
 void setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
+
+typedef enum {
+	CONSOLE_CURSOR_LEFT,
+	CONSOLE_CURSOR_RIGHT,
+	CONSOLE_CURSOR_UP,
+	CONSOLE_CURSOR_DOWN
+} console_cursor_t;
+
+
+void moveCursor(console_cursor_t direction) {
+	switch (direction) {
+		case CONSOLE_CURSOR_LEFT: {
+			fprintf(wallshell_out_stream, "\033[D");
+			break;
+		}
+		case CONSOLE_CURSOR_RIGHT: {
+			fprintf(wallshell_out_stream, "\033[C");
+			break;
+		}
+		case CONSOLE_CURSOR_UP: {
+			fprintf(wallshell_out_stream, "\033[A");
+			break;
+		}
+		case CONSOLE_CURSOR_DOWN: {
+			fprintf(wallshell_out_stream, "\033[B");
+			break;
+		}
+		default: break;
+	}
+}
 
 wallshell_error_t terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
@@ -686,9 +721,12 @@ wallshell_error_t terminalMain() {
 			break;
 			//} else if (current == '\r') {
 			//	enterPressed = true;
+		} else if (current == '\033') {
+		
 		} else {
-			fprintf(wallshell_out_stream, "%c", current);
-			wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
+			printf("\n%c - %d\n", current, current);
+			//fprintf(wallshell_out_stream, "%c", current);
+			//wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
 		}
 	}
 #ifndef CUSTOM_CONSOLE_SETUP

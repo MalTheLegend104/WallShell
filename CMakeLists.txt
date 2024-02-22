@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(WallShell C)
 
-set(CMAKE_C_STANDARD 99 REQUIRED)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
 
 #configure doing this or using wallshell_config.h
 # add_definitions(-DNO_BASIC_COMMANDS)
