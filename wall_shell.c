@@ -258,7 +258,7 @@ wallshell_error_t setBackgroundColor(console_bg_color_t color) {
  */
 wallshell_error_t registerCommand(const command_t c) {
 #ifdef DISABLE_MALLOC
-	if (current_command_spot != COMMAND_LIMIT){
+	if (current_command_spot != COMMAND_LIMIT) {
 		commands[current_command_spot] = c;
 		current_command_spot++;
 	} else {
@@ -507,14 +507,21 @@ void registerBasicCommands() {
 	registerCommand((command_t) {historyMain, historyHelp, "history", history_aliases, 1});
 }
 
+wallshell_error_t executeCommand(char* commandBuf) {
 #ifdef DISABLE_MALLOC
-wallshell_error_t executeCommand(char* commandBuf) {
-//  int argc = 0;
-//	char argv[MAX_ARGS][MAX_COMMAND_BUF];
-	return WALLSHELL_NO_ERROR;
-}
+	// Split the commandBuf into arguments based on spaces or other delimiters
+	int argc = 0;
+	char* argv[MAX_ARGS];
+	char* current = strtok(commandBuf, " ");
+	while (current != NULL) {
+		if (argc >= MAX_ARGS) break;
+		// allocates memory for the string and copies it
+		argv[argc] = current;
+		current = strtok(NULL, " ");
+		argc++;
+	}
+
 #else
-wallshell_error_t executeCommand(char* commandBuf) {
 	// We treat this like system execution does with int argc & char** argv.
 	// argv[0] is always the command name, argc always is at least 1 because of this
 	int argc = 0;
@@ -543,7 +550,7 @@ wallshell_error_t executeCommand(char* commandBuf) {
 		if (argv) free(argv);
 		return WALLSHELL_NO_ERROR;
 	}
-	
+#endif // DISABLE_MALLOC
 	// Call Command (if it exists)
 	for (size_t i = 0; i < current_command_spot; i++) {
 		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
@@ -572,12 +579,13 @@ wallshell_error_t executeCommand(char* commandBuf) {
 	setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
 	fprintf(wallshell_out_stream, "Command not found: \"%s\"\n", argv[0]);
 cleanup:
+#ifndef DISABLE_MALLOC
 	for (int i = 0; i < argc; i++) free(argv[i]);
 	free(argv);
+#endif // DISABLE_MALLOC
 	setConsoleColors(getDefaultColors());
 	return WALLSHELL_NO_ERROR;
 }
-#endif // DISABLE_MALLOC
 
 // Default prefix
 const char* prefix = "> ";
@@ -604,9 +612,10 @@ wallshell_error_t terminalMain() {
 	updateColors();
 	
 	/* Ideally something should've caught this before calling main, but we still need to check. */
+#ifndef DISABLE_MALLOC
 	if (!commands) commands = malloc(sizeof(command_t));
 	if (!commands) return WALLSHELL_OUT_OF_MEMORY;
-	
+#endif
 	bool newCommand = true;
 	// bool tabPressed = false; // allows for autocompletion
 	

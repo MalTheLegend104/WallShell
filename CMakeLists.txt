@@ -5,6 +5,7 @@ set(CMAKE_C_STANDARD 99 REQUIRED)
 
 #configure doing this or using wallshell_config.h
 # add_definitions(-DNO_BASIC_COMMANDS)
+# add_definitions(-DDISABLE_MALLOC)
 
 add_executable(WallShell
 		wall_shell.h
