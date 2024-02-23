@@ -124,6 +124,7 @@ wallshell_error_t setConsoleMode() {
 	inMode &= ~ENABLE_PROCESSED_INPUT;
 	inMode &= ~ENABLE_ECHO_INPUT;
 	if (!SetConsoleMode(hIn, inMode)) { return WALLSHELL_CONSOLE_SETUP_ERROR; }
+	fprintf(wallshell_out_stream, "\033=\033[?1h");
 #else
 	// POSIX terminals support
 	tcgetattr(STDIN_FILENO, &old_settings);
@@ -547,7 +548,9 @@ wallshell_error_t executeCommand(char* commandBuf) {
 			argv = newptr;
 		}
 		// allocates memory for the string and copies it
-		argv[argc] = strdup(current);
+		char* str = malloc(strlen(current) + 1);
+		strcpy(str, current);
+		argv[argc] = str;
 		current = strtok(NULL, " ");
 		argc++;
 	}
@@ -598,12 +601,11 @@ const char* prefix = "> ";
 void setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
 
 typedef enum {
-	CONSOLE_CURSOR_LEFT,
-	CONSOLE_CURSOR_RIGHT,
-	CONSOLE_CURSOR_UP,
-	CONSOLE_CURSOR_DOWN
+	CONSOLE_CURSOR_LEFT = 0x4b,
+	CONSOLE_CURSOR_RIGHT = 0x4d,
+	CONSOLE_CURSOR_UP = 0x48,
+	CONSOLE_CURSOR_DOWN = 0x50,
 } console_cursor_t;
-
 
 void moveCursor(console_cursor_t direction) {
 	switch (direction) {
@@ -626,6 +628,84 @@ void moveCursor(console_cursor_t direction) {
 		default: break;
 	}
 }
+
+typedef enum {
+	NONE = 0,
+	UNKNOWN = 0,
+	CURSOR,
+	FUNCTION,
+} input_type_t;
+
+typedef struct {
+	input_type_t type;
+	uint64_t result;
+} input_result_t;
+
+input_result_t processVirtualSequence() {
+	// The next character should be '[', and we can parse input until we know it should end with a certain character.
+	// For simplicity's sake we're just going to preallocate a buffer for the input
+	// If it doesn't end up being used it's not a big deal.
+	input_result_t result = {NONE, 0};
+	int next = wallshell_get_char(wallshell_in_stream);
+	if (next != '[' && next != 'O') {
+		fprintf(wallshell_out_stream, "%c", next);
+		return result;
+	}
+	
+	char seq[10];
+	int i = 0;
+	
+	// Read until we encounter a non-numeric character
+	next = wallshell_get_char(wallshell_in_stream);
+	while (next >= '0' && next <= '9' || next == ';') {
+		seq[i++] = (char) next;
+		next = wallshell_get_char(wallshell_in_stream);
+	}
+	seq[i] = '\0';
+	
+	// Handle the end character of the escape sequence
+	switch (next) {
+		case 'A': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_UP;
+			break;
+		case 'B': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_DOWN;
+			break;
+		case 'C': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_RIGHT;
+			break;
+		case 'D': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_LEFT;
+			break;
+		case '~': printf("Function key, sequence: %s\n", seq);
+			break;
+		case 'P':
+		case 'Q':
+		case 'R':
+		case 'S': printf("Special function key\n");
+			break;
+		default: break;
+	}
+	return result;
+}
+
+input_result_t processEO() {
+	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
+	int next = wallshell_get_char(wallshell_in_stream);
+	input_result_t result = {NONE, 0};
+	switch (next) {
+		case CONSOLE_CURSOR_UP:
+		case CONSOLE_CURSOR_DOWN:
+		case CONSOLE_CURSOR_LEFT:
+		case CONSOLE_CURSOR_RIGHT: result.type = CURSOR;
+			result.result = next;
+			break;
+		default: break;
+	}
+	return result;
+}
+
+inline void clearRow() { fprintf(wallshell_out_stream, "\033[M"); }
 
 wallshell_error_t terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
@@ -654,19 +734,57 @@ wallshell_error_t terminalMain() {
 	bool newCommand = true;
 	// bool tabPressed = false; // allows for autocompletion
 	
-	// size_t position_in_previous = 0;
+	size_t position_in_previous = 0;
 	
 	char commandBuf[MAX_COMMAND_BUF];
 	char oldCommand[MAX_COMMAND_BUF];
+	
+	input_result_t input_result = {0, 0};
 	
 	while (true) {
 		if (newCommand) {
 			fprintf(wallshell_out_stream, "%s", prefix);
 			newCommand = false;
 			// tabPressed = false;
-			// position_in_previous = 0;
+			position_in_previous = 0;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
+		}
+		
+		// Check for the previous input results
+		if (input_result.type != NONE) {
+			if (input_result.type == CURSOR) {
+				switch (input_result.result) {
+					case CONSOLE_CURSOR_UP: clearRow();
+						if (position_in_previous == 0) {
+							memset(oldCommand, 0, MAX_COMMAND_BUF);
+							memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
+						}
+						memset(commandBuf, 0, MAX_COMMAND_BUF);
+						memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
+						fprintf(wallshell_out_stream, "\r%s%s", prefix, commandBuf);
+						if (previous_commands_size > 0 && position_in_previous < previous_commands_size - 1) {
+							position_in_previous++;
+						}
+						input_result.type = NONE;
+						continue;
+					case CONSOLE_CURSOR_DOWN: clearRow();
+						if (position_in_previous > 0) {
+							position_in_previous--;
+							memset(commandBuf, 0, MAX_COMMAND_BUF);
+							memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
+						} else {
+							memset(commandBuf, 0, MAX_COMMAND_BUF);
+							memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
+						}
+						fprintf(wallshell_out_stream, "\r%s%s", prefix, commandBuf);
+						input_result.type = NONE;
+						continue;
+					case CONSOLE_CURSOR_RIGHT: // We're just ignoring these for now.
+					case CONSOLE_CURSOR_LEFT:
+					default: break;
+				}
+			}
 		}
 		
 		int current = wallshell_get_char(wallshell_in_stream);
@@ -722,11 +840,15 @@ wallshell_error_t terminalMain() {
 			//} else if (current == '\r') {
 			//	enterPressed = true;
 		} else if (current == '\033') {
-		
+			input_result = processVirtualSequence();
+		} else if (current == 0xE0) {
+			// Microsoft sometimes wants to work with virtual inputs but usually doesn't.
+			// At the very least this makes porting it to an os very easy.
+			input_result = processEO();
 		} else {
-			printf("\n%c - %d\n", current, current);
-			//fprintf(wallshell_out_stream, "%c", current);
-			//wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
+			// printf("\n%c - %d\n", current, current);
+			fprintf(wallshell_out_stream, "%c", current);
+			wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
 		}
 	}
 #ifndef CUSTOM_CONSOLE_SETUP
