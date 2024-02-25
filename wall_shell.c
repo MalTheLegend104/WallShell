@@ -587,7 +587,14 @@ void registerBasicCommands() {
 // Virtual Sequences and Cursor Control
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-void moveCursor(console_cursor_t direction) {
+/* Input */
+typedef enum {
+	NONE = 0,
+	CURSOR,
+	FUNCTION,
+} input_type_t;
+
+void wallshell_move_cursor(console_cursor_t direction) {
 	switch (direction) {
 		case CONSOLE_CURSOR_LEFT: {
 			fprintf(wallshell_out_stream, "\033[D");
@@ -609,9 +616,10 @@ void moveCursor(console_cursor_t direction) {
 	}
 }
 
-#ifndef CUSTOM_CURSOR_CONTROL
-	#define MOVE_CURSOR(direction) moveCursor(direction);
-#endif // CUSTOM_CURSOR_CONTROL
+typedef struct {
+	input_type_t type;
+	uint64_t result;
+} input_result_t;
 
 input_result_t processVirtualSequence() {
 	// The next character should be '[', and we can parse input until we know it should end with a certain character.
