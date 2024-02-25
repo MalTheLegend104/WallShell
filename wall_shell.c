@@ -4,17 +4,23 @@
  * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
  * @version v1.0
  */
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// General header & compiler config
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 #include "wall_shell.h"
 #ifdef _WIN32
 	#include <Windows.h>
 #endif
 
 /* Disable unused parameter warnings. This only affects this file. */
-#ifdef __GNUC__ // Check if GCC is being used
+#ifdef __GNUC__
 	#pragma GCC diagnostic ignored "-Wunused-parameter"
-#elif defined(__clang__) // Check if Clang is being used
+#elif defined(__clang__)
 	#pragma clang diagnostic ignored "-Wunused-parameter"
-#elif defined(_MSC_VER) // Check if MSVC (Visual C++) is being used
+#elif defined(_MSC_VER)
 	#pragma warning(disable : 4100)
 #endif
 
@@ -26,9 +32,11 @@
 #pragma warning(disable : 4996)
 #endif
 
-// For some systems (mostly POSIX), backspace gets sent as ascii delete rather than \b
-bool backspace_as_ascii_delete = false;
-
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Internal Utility Functions
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 /**
  * @brief Internal function to concat a single char to the end of a string.
  * If the string is already at max length (including room for '\0') then the string is returned unchanged.
@@ -52,8 +60,22 @@ char* wallshell_internal_strcat_c(char* string, char c, size_t size) {
 	return string;
 }
 
+bool wallshell_internal_startsWith(const char* str, const char* prefix) {
+	while (*prefix) {
+		if (*prefix != *str) {
+			return false;
+		}
+		prefix++;
+		str++;
+	}
+	return true;
+}
+
+
+// ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // Streams
+// ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 FILE* wallshell_out_stream = NULL;
 FILE* wallshell_err_stream = NULL;
@@ -77,6 +99,17 @@ void initializeDefaultStreams() {
 	setStream(WALLSHELL_OUTPUT, stdout);
 }
 
+#ifndef CLEAR_ROW
+	#define CLEAR_ROW fprintf(wallshell_out_stream, "\033[M");
+#endif // CLEAR_ROW
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Custom Console Setup
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// For some systems (mostly POSIX), backspace gets sent as ascii delete rather than \b
+bool backspace_as_ascii_delete = false;
 #ifndef CUSTOM_CONSOLE_SETUP
 	#ifndef _WIN32
 		#include <termios.h>
@@ -156,7 +189,9 @@ void resetConsoleState() {
 #endif // CUSTOM_CONSOLE_SETUP
 
 // ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 // Default console color output.
+// ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 #ifndef CUSTOM_CONSOLE_COLORS
 	#ifdef _WIN32
@@ -207,7 +242,9 @@ char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
 size_t previous_commands_size;
 
 // ------------------------------------------------------------------------------------------------
-// Console Color Configuration
+// ------------------------------------------------------------------------------------------------
+// Console Colors
+// ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 console_color_t default_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
 console_color_t current_colors = {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT};
@@ -252,6 +289,12 @@ wallshell_error_t setBackgroundColor(console_bg_color_t color) {
 	current_colors.background = color;
 	return updateColors();
 }
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Register Command & Internal Commands
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 
 /**
  * @brief Register the command to the command handler.
@@ -331,17 +374,6 @@ int clearMain(int argc, char** argv) {
 	// Sometimes clearing the screen results in the colors getting reset.
 	updateColors();
 	return 0;
-}
-
-bool wallshell_internal_startsWith(const char* str, const char* prefix) {
-	while (*prefix) {
-		if (*prefix != *str) {
-			return false;
-		}
-		prefix++;
-		str++;
-	}
-	return true;
 }
 
 void helpSearch(char* str) {
@@ -486,13 +518,45 @@ int historyHelp(int argc, char** argv) {
 	printGeneralHelp(&entry);
 	return 0;
 }
-
 int historyMain(int argc, char** argv) {
 	setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
 	for (size_t i = 0; i < previous_commands_size; i++) {
 		printf("%s\n", previousCommands[i]);
 	}
 	setConsoleColors(getDefaultColors());
+	return 0;
+}
+
+bool exit_terminal = false;
+int exitMain(int argc, char** argv) {
+	if (argc > 1) {
+		if ((strcmp(argv[1], "-y") == 0 || strcmp(argv[1], "--yes") == 0)) {
+			exit_terminal = true;
+		} else {
+			setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+			fprintf(wallshell_out_stream, "Unknown argument: %s\n", argv[1]);
+			setConsoleColors(getDefaultColors());
+		}
+	} else {
+		exit_terminal = promptUser("Are you sure you want to exit?");
+	}
+	printf("\n");
+	return 0;
+}
+int exitHelp() {
+	const char* optional[] = {
+			"--yes",
+			"-y   -> Exits the terminal without the prompt."
+	};
+	help_entry_specific_t entry = {
+			"Exit",
+			"Exits the terminal.",
+			NULL,
+			0,
+			optional,
+			2
+	};
+	printSpecificHelp(&entry);
 	return 0;
 }
 
@@ -512,8 +576,112 @@ void registerBasicCommands() {
 #ifndef NO_HISTORY_COMMAND
 	registerCommand((command_t) {historyMain, historyHelp, "history", history_aliases, 1});
 #endif // NO_HISTORY_COMMAND
+
+#ifndef NO_EXIT_COMMAND
+	registerCommand((command_t) {exitMain, exitHelp, "exit", NULL, 0});
+#endif // NO_EXIT_COMMAND
 }
 
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Virtual Sequences and Cursor Control
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+void moveCursor(console_cursor_t direction) {
+	switch (direction) {
+		case CONSOLE_CURSOR_LEFT: {
+			fprintf(wallshell_out_stream, "\033[D");
+			break;
+		}
+		case CONSOLE_CURSOR_RIGHT: {
+			fprintf(wallshell_out_stream, "\033[C");
+			break;
+		}
+		case CONSOLE_CURSOR_UP: {
+			fprintf(wallshell_out_stream, "\033[A");
+			break;
+		}
+		case CONSOLE_CURSOR_DOWN: {
+			fprintf(wallshell_out_stream, "\033[B");
+			break;
+		}
+		default: break;
+	}
+}
+
+#ifndef CUSTOM_CURSOR_CONTROL
+	#define MOVE_CURSOR(direction) moveCursor(direction);
+#endif // CUSTOM_CURSOR_CONTROL
+
+input_result_t processVirtualSequence() {
+	// The next character should be '[', and we can parse input until we know it should end with a certain character.
+	// For simplicity's sake we're just going to preallocate a buffer for the input
+	// If it doesn't end up being used it's not a big deal.
+	input_result_t result = {NONE, 0};
+	int next = wallshell_get_char(wallshell_in_stream);
+	if (next != '[' && next != 'O') {
+		fprintf(wallshell_out_stream, "%c", next);
+		return result;
+	}
+	
+	char seq[10];
+	int i = 0;
+	
+	// Read until we encounter a non-numeric character
+	next = wallshell_get_char(wallshell_in_stream);
+	while (next >= '0' && next <= '9' || next == ';') {
+		seq[i++] = (char) next;
+		next = wallshell_get_char(wallshell_in_stream);
+	}
+	seq[i] = '\0';
+	
+	// Handle the end character of the escape sequence
+	switch (next) {
+		case 'A': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_UP;
+			break;
+		case 'B': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_DOWN;
+			break;
+		case 'C': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_RIGHT;
+			break;
+		case 'D': result.type = CURSOR;
+			result.result = CONSOLE_CURSOR_LEFT;
+			break;
+		case '~': printf("Function key, sequence: %s\n", seq);
+			break;
+		case 'P':
+		case 'Q':
+		case 'R':
+		case 'S': printf("Special function key\n");
+			break;
+		default: break;
+	}
+	return result;
+}
+
+input_result_t processEO() {
+	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
+	int next = wallshell_get_char(wallshell_in_stream);
+	input_result_t result = {NONE, 0};
+	switch (next) {
+		case CONSOLE_CURSOR_UP:
+		case CONSOLE_CURSOR_DOWN:
+		case CONSOLE_CURSOR_LEFT:
+		case CONSOLE_CURSOR_RIGHT: result.type = CURSOR;
+			result.result = next;
+			break;
+		default: break;
+	}
+	return result;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Execute command & Main
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
 wallshell_error_t executeCommand(char* commandBuf) {
 #ifdef DISABLE_MALLOC
 	// Split the commandBuf into arguments based on spaces or other delimiters
@@ -527,7 +695,6 @@ wallshell_error_t executeCommand(char* commandBuf) {
 		current = strtok(NULL, " ");
 		argc++;
 	}
-
 #else
 	// We treat this like system execution does with int argc & char** argv.
 	// argv[0] is always the command name, argc always is at least 1 because of this
@@ -600,113 +767,6 @@ cleanup:
 const char* prefix = "> ";
 void setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
 
-typedef enum {
-	CONSOLE_CURSOR_LEFT = 0x4b,
-	CONSOLE_CURSOR_RIGHT = 0x4d,
-	CONSOLE_CURSOR_UP = 0x48,
-	CONSOLE_CURSOR_DOWN = 0x50,
-} console_cursor_t;
-
-void moveCursor(console_cursor_t direction) {
-	switch (direction) {
-		case CONSOLE_CURSOR_LEFT: {
-			fprintf(wallshell_out_stream, "\033[D");
-			break;
-		}
-		case CONSOLE_CURSOR_RIGHT: {
-			fprintf(wallshell_out_stream, "\033[C");
-			break;
-		}
-		case CONSOLE_CURSOR_UP: {
-			fprintf(wallshell_out_stream, "\033[A");
-			break;
-		}
-		case CONSOLE_CURSOR_DOWN: {
-			fprintf(wallshell_out_stream, "\033[B");
-			break;
-		}
-		default: break;
-	}
-}
-
-typedef enum {
-	NONE = 0,
-	UNKNOWN = 0,
-	CURSOR,
-	FUNCTION,
-} input_type_t;
-
-typedef struct {
-	input_type_t type;
-	uint64_t result;
-} input_result_t;
-
-input_result_t processVirtualSequence() {
-	// The next character should be '[', and we can parse input until we know it should end with a certain character.
-	// For simplicity's sake we're just going to preallocate a buffer for the input
-	// If it doesn't end up being used it's not a big deal.
-	input_result_t result = {NONE, 0};
-	int next = wallshell_get_char(wallshell_in_stream);
-	if (next != '[' && next != 'O') {
-		fprintf(wallshell_out_stream, "%c", next);
-		return result;
-	}
-	
-	char seq[10];
-	int i = 0;
-	
-	// Read until we encounter a non-numeric character
-	next = wallshell_get_char(wallshell_in_stream);
-	while (next >= '0' && next <= '9' || next == ';') {
-		seq[i++] = (char) next;
-		next = wallshell_get_char(wallshell_in_stream);
-	}
-	seq[i] = '\0';
-	
-	// Handle the end character of the escape sequence
-	switch (next) {
-		case 'A': result.type = CURSOR;
-			result.result = CONSOLE_CURSOR_UP;
-			break;
-		case 'B': result.type = CURSOR;
-			result.result = CONSOLE_CURSOR_DOWN;
-			break;
-		case 'C': result.type = CURSOR;
-			result.result = CONSOLE_CURSOR_RIGHT;
-			break;
-		case 'D': result.type = CURSOR;
-			result.result = CONSOLE_CURSOR_LEFT;
-			break;
-		case '~': printf("Function key, sequence: %s\n", seq);
-			break;
-		case 'P':
-		case 'Q':
-		case 'R':
-		case 'S': printf("Special function key\n");
-			break;
-		default: break;
-	}
-	return result;
-}
-
-input_result_t processEO() {
-	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
-	int next = wallshell_get_char(wallshell_in_stream);
-	input_result_t result = {NONE, 0};
-	switch (next) {
-		case CONSOLE_CURSOR_UP:
-		case CONSOLE_CURSOR_DOWN:
-		case CONSOLE_CURSOR_LEFT:
-		case CONSOLE_CURSOR_RIGHT: result.type = CURSOR;
-			result.result = next;
-			break;
-		default: break;
-	}
-	return result;
-}
-
-inline void clearRow() { fprintf(wallshell_out_stream, "\033[M"); }
-
 wallshell_error_t terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
 	/* We're also assuming the colors have been defined, even if they are blank. */
@@ -741,7 +801,7 @@ wallshell_error_t terminalMain() {
 	
 	input_result_t input_result = {0, 0};
 	
-	while (true) {
+	while (!exit_terminal) {
 		if (newCommand) {
 			fprintf(wallshell_out_stream, "%s", prefix);
 			newCommand = false;
@@ -755,7 +815,8 @@ wallshell_error_t terminalMain() {
 		if (input_result.type != NONE) {
 			if (input_result.type == CURSOR) {
 				switch (input_result.result) {
-					case CONSOLE_CURSOR_UP: clearRow();
+					case CONSOLE_CURSOR_UP: {
+						CLEAR_ROW;
 						if (position_in_previous == 0) {
 							memset(oldCommand, 0, MAX_COMMAND_BUF);
 							memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
@@ -768,7 +829,9 @@ wallshell_error_t terminalMain() {
 						}
 						input_result.type = NONE;
 						continue;
-					case CONSOLE_CURSOR_DOWN: clearRow();
+					}
+					case CONSOLE_CURSOR_DOWN: {
+						CLEAR_ROW;
 						if (position_in_previous > 0) {
 							position_in_previous--;
 							memset(commandBuf, 0, MAX_COMMAND_BUF);
@@ -780,6 +843,7 @@ wallshell_error_t terminalMain() {
 						fprintf(wallshell_out_stream, "\r%s%s", prefix, commandBuf);
 						input_result.type = NONE;
 						continue;
+					}
 					case CONSOLE_CURSOR_RIGHT: // We're just ignoring these for now.
 					case CONSOLE_CURSOR_LEFT:
 					default: break;
@@ -790,7 +854,6 @@ wallshell_error_t terminalMain() {
 		int current = wallshell_get_char(wallshell_in_stream);
 		if (backspace_as_ascii_delete && current == 0x7f)
 			current = '\b';
-		//printf("%c - %d\n", current, current); // useful for debugging your wallshell_get_char
 		if (current == '\n' || current == '\r') {
 			// If there's an empty command we just start a new line.
 			fprintf(wallshell_out_stream, "\n");
@@ -837,8 +900,6 @@ wallshell_error_t terminalMain() {
 			// Temporarily for development’s sake, this is how you exit the console.
 			// ctrl+d on unix, ctrl+z on windows
 			break;
-			//} else if (current == '\r') {
-			//	enterPressed = true;
 		} else if (current == '\033') {
 			input_result = processVirtualSequence();
 		} else if (current == 0xE0) {
@@ -961,4 +1022,23 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 	}
 	setConsoleColors((console_color_t) {CONSOLE_FG_DEFAULT, CONSOLE_BG_DEFAULT});
 	fprintf(wallshell_out_stream, "\n");
+}
+
+#include <stdarg.h>
+bool promptUser(const char* format, ...) {
+	va_list arg;
+	va_start(arg, format);
+	vfprintf(wallshell_out_stream, format, arg);
+	va_end(arg);
+	
+	fprintf(wallshell_out_stream, " [Y/n] ");
+	int first_input = wallshell_get_char(wallshell_in_stream);
+	fprintf(wallshell_out_stream, "%c", first_input);
+	int input;
+	do {
+		input = wallshell_get_char(wallshell_in_stream);
+		fprintf(wallshell_out_stream, "%c", input);
+	} while (input != '\n');
+	if (first_input == 'Y' || first_input == 'y') return true;
+	return false;
 }

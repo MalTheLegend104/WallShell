@@ -162,6 +162,25 @@ typedef enum {
 
 void setStream(wallshell_stream type, FILE* stream);
 
+/* Input and cursor control */
+typedef enum {
+	NONE = 0,
+	CURSOR,
+	FUNCTION,
+} input_type_t;
+
+typedef enum {
+	CONSOLE_CURSOR_LEFT = 0x4b,
+	CONSOLE_CURSOR_RIGHT = 0x4d,
+	CONSOLE_CURSOR_UP = 0x48,
+	CONSOLE_CURSOR_DOWN = 0x50,
+} console_cursor_t;
+
+typedef struct {
+	input_type_t type;
+	uint64_t result;
+} input_result_t;
+
 /* General operations */
 wallshell_error_t registerCommand(const command_t c);
 void deregisterCommand(const command_t c);
@@ -173,6 +192,7 @@ void printGeneralHelp(help_entry_general_t* entry);
 void printSpecificHelp(help_entry_specific_t* entry);
 void setConsoleLocale();
 void initializeDefaultStreams();
+bool promptUser(const char* format, ...);
 
 void setConsolePrefix(const char* newPrefix);
 
