@@ -181,12 +181,15 @@ void deregisterCommand(const command_t c);
 wallshell_error_t executeCommand(char* commandBuf);
 wallshell_error_t terminalMain();
 
+/* Console Setup */
+void setAsciiDeleteAsBackspace(bool b);
+void setConsoleLocale();
+void setConsolePrefix(const char* newPrefix);
+void initializeDefaultStreams();
+
 /* Utility functions */
 void printGeneralHelp(help_entry_general_t* entry);
 void printSpecificHelp(help_entry_specific_t* entry);
-void setConsoleLocale();
-void initializeDefaultStreams();
 bool promptUser(const char* format, ...);
-void setConsolePrefix(const char* newPrefix);
 bool compareCommands(const command_t c1, const command_t c2);
 #endif // COMMAND_HANDLER_H

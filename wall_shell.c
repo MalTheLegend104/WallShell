@@ -188,6 +188,15 @@ void resetConsoleState() {
 	#endif // _WIN32
 #endif // CUSTOM_CONSOLE_SETUP
 
+// To aid portability, we allow the user to set backspace_as_ascii_delete
+/**
+ * @brief Some consoles send backspace as ASCII delete (0x7f) instead of '\b'.
+ * If your system does this, set this to true. This only needs to be done if CUSTOM_CONSOLE_SETUP is defined.
+ * POSIX and Windows based systems are automatically configured.
+ * @param b Bool to set backspace_as_ascii_delete to.
+ */
+void setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
+
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // Default console color output.
@@ -657,13 +666,13 @@ input_result_t processVirtualSequence() {
 		case 'D': result.type = CURSOR;
 			result.result = CONSOLE_CURSOR_LEFT;
 			break;
-		case '~': printf("Function key, sequence: %s\n", seq);
-			break;
-		case 'P':
-		case 'Q':
-		case 'R':
-		case 'S': printf("Special function key\n");
-			break;
+			//case '~': printf("Function key, sequence: %s\n", seq);
+			//	break;
+			//case 'P':
+			//case 'Q':
+			//case 'R':
+			//case 'S': printf("Special function key\n");
+			//	break;
 		default: break;
 	}
 	return result;
@@ -800,7 +809,7 @@ wallshell_error_t terminalMain() {
 	if (!commands) return WALLSHELL_OUT_OF_MEMORY;
 #endif
 	bool newCommand = true;
-	// bool tabPressed = false; // allows for autocompletion
+	bool tabPressed = false; // allows for autocompletion
 	
 	size_t position_in_previous = 0;
 	
@@ -813,7 +822,7 @@ wallshell_error_t terminalMain() {
 		if (newCommand) {
 			fprintf(wallshell_out_stream, "%s", prefix);
 			newCommand = false;
-			// tabPressed = false;
+			tabPressed = false;
 			position_in_previous = 0;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
@@ -840,6 +849,7 @@ wallshell_error_t terminalMain() {
 					}
 					case CONSOLE_CURSOR_DOWN: {
 						CLEAR_ROW;
+						if (previous_commands_size == 1 && position_in_previous == 1) position_in_previous--;
 						if (position_in_previous > 0) {
 							position_in_previous--;
 							memset(commandBuf, 0, MAX_COMMAND_BUF);
@@ -898,12 +908,74 @@ wallshell_error_t terminalMain() {
 				// It uses delete to move the cursor back one, prints a space to make sure it's cleared, the goes back one again.
 				// If I implement a better cursor system this will likely get changed later.
 				
-				// Expected behavior is backspace moves the cursor back one, prints a space, then moves it back again.
+				// Expected behavior of backspace moves the cursor back one and doesn't actually clear the character.
+				// It doesn't really matter if it does, it just makes this a little redundant.
 				fprintf(wallshell_out_stream, "\b \b");
 			}
 		} else if (current == '\t') {
 			// see if we can autocomplete a command.
-			// TODO implement this feature.
+			const char* list[50]; // List of current possible commands
+			int list_size = 0;
+			for (int i = 0; i < command_size; i++) {
+				setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_GREEN, CONSOLE_BG_DEFAULT});
+				if (commands[i].commandName && wallshell_internal_startsWith(commands[i].commandName, commandBuf)) {
+					list[list_size] = commands[i].commandName;
+					list_size++;
+				}
+				
+				// Check aliases for a match
+				for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+					if (commands[i].aliases[alias_idx] && wallshell_internal_startsWith(commands[i].aliases[alias_idx], commandBuf)) {
+						// If it's an alias of a command that's already in the list, we dont want it.
+						bool already_in_list = false;
+						for (int j = 0; j < list_size; j++) {
+							if (strcmp(list[j], commands[i].commandName) == 0) {
+								already_in_list = true;
+								break;
+							}
+						}
+						if (!already_in_list) {
+							list[list_size] = commands[i].aliases[alias_idx];
+							list_size++;
+						}
+					}
+				}
+				setConsoleColors(getDefaultColors());
+			}
+			
+			if (list_size == 1) {
+				// Print the rest of the command
+				size_t len = strlen(commandBuf);
+				const char* currentCommand = list[0];
+				for (size_t i = len; i < strlen(currentCommand); i++) {
+					printf("%c", currentCommand[i]);
+					wallshell_internal_strcat_c(commandBuf, currentCommand[i], MAX_COMMAND_BUF);
+				}
+				tabPressed = false;
+			} else if (tabPressed) {
+				if (list_size == 0) {
+					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
+					printf("\nNo command starting with: %s\n", commandBuf);
+					// Clear the buffer
+					memset(commandBuf, 0, MAX_COMMAND_BUF * sizeof(char));
+					commandBuf[0] = '\0';
+					newCommand = true;
+				} else if (list_size > 1) {
+					// Print out all commands
+					setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
+					printf("\n");
+					for (int i = 0; i < list_size; i++) {
+						printf("%s\n", list[i]);
+					}
+					setConsoleColors(getDefaultColors());
+					// Reprint the command line
+					printf("> %s", commandBuf);
+				}
+				tabPressed = false;
+			} else {
+				tabPressed = true;
+			}
+			setConsoleColors(getDefaultColors());
 		} else if (current == EOF) {
 			// Temporarily for development’s sake, this is how you exit the console.
 			// ctrl+d on unix, ctrl+z on windows
@@ -913,6 +985,7 @@ wallshell_error_t terminalMain() {
 		} else if (current == 0xE0) {
 			// Microsoft sometimes wants to work with virtual inputs but usually doesn't.
 			// At the very least this makes porting it to an os very easy.
+			// All the OS has to do is give this program raw input in the form of scancodes for special keys.
 			input_result = processEO();
 		} else {
 			// printf("\n%c - %d\n", current, current);
@@ -1035,9 +1108,9 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 #include <stdarg.h>
 bool promptUser(const char* format, ...) {
 	va_list arg;
-	va_start(arg, format);
+			va_start(arg, format);
 	vfprintf(wallshell_out_stream, format, arg);
-	va_end(arg);
+			va_end(arg);
 	
 	fprintf(wallshell_out_stream, " [Y/n] ");
 	int first_input = wallshell_get_char(wallshell_in_stream);
