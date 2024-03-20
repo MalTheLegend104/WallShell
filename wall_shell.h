@@ -170,10 +170,8 @@ typedef enum {
 	CONSOLE_CURSOR_DOWN = 0x50,
 } console_cursor_t;
 
-#ifndef CUSTOM_CURSOR_CONTROL
 void wallshell_move_cursor(console_cursor_t direction);
-	#define MOVE_CURSOR(direction) wallshell_move_cursor(direction);
-#endif // CUSTOM_CURSOR_CONTROL
+void wallshell_move_cursor_n(console_cursor_t direction, size_t n);
 
 /* General operations */
 wallshell_error_t registerCommand(const command_t c);

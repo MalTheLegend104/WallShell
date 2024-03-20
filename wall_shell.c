@@ -625,27 +625,31 @@ typedef enum {
 	FUNCTION,
 } input_type_t;
 
-void wallshell_move_cursor(console_cursor_t direction) {
+#ifndef CUSTOM_CURSOR_CONTROL
+void wallshell_move_cursor_n(console_cursor_t direction, size_t n) {
 	switch (direction) {
 		case CONSOLE_CURSOR_LEFT: {
-			fprintf(wallshell_out_stream, "\033[D");
+			fprintf(wallshell_out_stream, "\033[%zuD", n);
 			break;
 		}
 		case CONSOLE_CURSOR_RIGHT: {
-			fprintf(wallshell_out_stream, "\033[C");
+			fprintf(wallshell_out_stream, "\033[%zuC", n);
 			break;
 		}
 		case CONSOLE_CURSOR_UP: {
-			fprintf(wallshell_out_stream, "\033[A");
+			fprintf(wallshell_out_stream, "\033[%zuA", n);
 			break;
 		}
 		case CONSOLE_CURSOR_DOWN: {
-			fprintf(wallshell_out_stream, "\033[B");
+			fprintf(wallshell_out_stream, "\033[%zuB", n);
 			break;
 		}
 		default: break;
 	}
 }
+
+void wallshell_move_cursor(console_cursor_t direction) { wallshell_move_cursor_n(direction, 1); }
+#endif // CUSTOM_CURSOR_CONTROL
 
 typedef struct {
 	input_type_t type;

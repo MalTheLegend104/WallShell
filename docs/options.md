@@ -15,11 +15,19 @@ DISABLE_MALLOC
 - Meant for freestanding environments that don't necessarily have access to normal memory allocation.
 - Requires everything to be statically defined.
 - You have to be very careful as to what context things are defined in.
+    - Defining things like aliases in the scope of a function can lead to major problems.
+    - [See this for more specifics.](disable_malloc.md)
 
 CUSTOM_CURSOR_CONTROL
 
 - Allows you to use different methods to control the console cursor than virtual sequences.
-- You must define the `MOVE_CURSOR(direction)` macro, that takes in a `console_cursor_t`.
+- You must create definitions for two functions:
+    - `void wallshell_move_cursor(console_cursor_t direction);`
+        - This function moves the cursor *once* in the specified direction.
+    - `void wallshell_move_cursor_n(console_cursor_t direction, size_t num);`
+        - This function moves the cursor `num` times in the specified direction.
+  > It's advised that you put these definitions in `wallshell_config.h`.
+  > Remember that these are already *defined* in `wall_shell.h`, redefining them will cause errors.
 
 CLEAR_ROW
 
