@@ -60,6 +60,28 @@ char* wallshell_internal_strcat_c(char* string, char c, size_t size) {
 	return string;
 }
 
+/**
+ * @brief Internal function to insert a single char into a string.
+ * If the string is already at max length (including room for '\0') then the string is returned unchanged.
+ *
+ * @param string String to add the character to.
+ * @param buf_size Size of the entire buffer.
+ * @param c Character to add to the string.
+ * @param position Position that the character is inserted into. It should be index + 1
+ * @return char* Same as the string passed through.
+ */
+char* wallshell_internal_insert_c(char* string, size_t buf_size, char c, size_t position) {
+	size_t current_length = strlen(string);
+	if (current_length + 1 >= buf_size) return string;
+	
+	for (size_t i = current_length; i > position - 1; i--) {
+		string[i] = string[i - 1];
+	}
+	string[position - 1] = c;
+	
+	return string;
+}
+
 bool wallshell_internal_startsWith(const char* str, const char* prefix) {
 	while (*prefix) {
 		if (*prefix != *str) {
@@ -812,6 +834,7 @@ wallshell_error_t terminalMain() {
 	bool tabPressed = false; // allows for autocompletion
 	
 	size_t position_in_previous = 0;
+	size_t current_position = 1;
 	
 	char commandBuf[MAX_COMMAND_BUF];
 	char oldCommand[MAX_COMMAND_BUF];
@@ -824,6 +847,7 @@ wallshell_error_t terminalMain() {
 			newCommand = false;
 			tabPressed = false;
 			position_in_previous = 0;
+			current_position = 1;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
 		}
@@ -845,6 +869,7 @@ wallshell_error_t terminalMain() {
 							position_in_previous++;
 						}
 						input_result.type = NONE;
+						current_position = 1;
 						continue;
 					}
 					case CONSOLE_CURSOR_DOWN: {
@@ -859,11 +884,24 @@ wallshell_error_t terminalMain() {
 							memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
 						}
 						fprintf(wallshell_out_stream, "\r%s%s", prefix, commandBuf);
+						current_position = 1;
 						input_result.type = NONE;
 						continue;
 					}
-					case CONSOLE_CURSOR_RIGHT: // We're just ignoring these for now.
-					case CONSOLE_CURSOR_LEFT:
+					case CONSOLE_CURSOR_RIGHT: {
+						if (current_position == (strlen(commandBuf) + 1)) break;
+						current_position++;
+						wallshell_move_cursor(CONSOLE_CURSOR_RIGHT);
+						input_result.type = NONE;
+						continue;
+					}
+					case CONSOLE_CURSOR_LEFT: {
+						if (current_position == 1) break;
+						current_position--;
+						wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
+						input_result.type = NONE;
+						continue;
+					}
 					default: break;
 				}
 			}
@@ -902,15 +940,29 @@ wallshell_error_t terminalMain() {
 			newCommand = true;
 		} else if (current == '\b') {
 			if (strlen(commandBuf) > 0) {
-				// Remove the last character by setting it to null terminator
-				commandBuf[strlen(commandBuf) - 1] = '\0';
-				// We also need to clear the character from the terminal. This is a little cursed.
-				// It uses delete to move the cursor back one, prints a space to make sure it's cleared, the goes back one again.
-				// If I implement a better cursor system this will likely get changed later.
+				if (current_position <= 1) continue;
+				// Remove the current position & shift to the left
+				size_t len = strlen(commandBuf);
+				for (size_t i = current_position - 2; i < len; i++) {
+					commandBuf[i] = commandBuf[i + 1];
+				}
+				// Ensure it's null terminated.
+				// In theory, it should already be, but I'd rather do this unnecessary step than have an overflow or messed up buffer.
+				commandBuf[len - 1] = '\0';
 				
-				// Expected behavior of backspace moves the cursor back one and doesn't actually clear the character.
-				// It doesn't really matter if it does, it just makes this a little redundant.
-				fprintf(wallshell_out_stream, "\b \b");
+				current_position--;
+				if (current_position != (strlen(commandBuf) + 1)) {
+					CLEAR_ROW;
+					fprintf(wallshell_out_stream, "%s%s", prefix, commandBuf);
+					for (size_t i = strlen(commandBuf); i > current_position; i--) {
+						wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
+					}
+				} else {
+					// only clear the last char. much quicker than rewriting the line
+					wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
+					fprintf(wallshell_out_stream, " ");
+					wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
+				}
 			}
 		} else if (current == '\t') {
 			// see if we can autocomplete a command.
@@ -948,14 +1000,14 @@ wallshell_error_t terminalMain() {
 				size_t len = strlen(commandBuf);
 				const char* currentCommand = list[0];
 				for (size_t i = len; i < strlen(currentCommand); i++) {
-					printf("%c", currentCommand[i]);
+					fprintf(wallshell_out_stream, "%c", currentCommand[i]);
 					wallshell_internal_strcat_c(commandBuf, currentCommand[i], MAX_COMMAND_BUF);
 				}
 				tabPressed = false;
 			} else if (tabPressed) {
 				if (list_size == 0) {
 					setConsoleColors((console_color_t) {CONSOLE_FG_BRIGHT_RED, CONSOLE_BG_DEFAULT});
-					printf("\nNo command starting with: %s\n", commandBuf);
+					fprintf(wallshell_out_stream, "\nNo command starting with: %s\n", commandBuf);
 					// Clear the buffer
 					memset(commandBuf, 0, MAX_COMMAND_BUF * sizeof(char));
 					commandBuf[0] = '\0';
@@ -963,13 +1015,13 @@ wallshell_error_t terminalMain() {
 				} else if (list_size > 1) {
 					// Print out all commands
 					setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
-					printf("\n");
+					fprintf(wallshell_out_stream, "\n");
 					for (int i = 0; i < list_size; i++) {
-						printf("%s\n", list[i]);
+						fprintf(wallshell_out_stream, "%s\n", list[i]);
 					}
 					setConsoleColors(getDefaultColors());
 					// Reprint the command line
-					printf("> %s", commandBuf);
+					fprintf(wallshell_out_stream, "\r%s%s", prefix, commandBuf);
 				}
 				tabPressed = false;
 			} else {
@@ -988,9 +1040,19 @@ wallshell_error_t terminalMain() {
 			// All the OS has to do is give this program raw input in the form of scancodes for special keys.
 			input_result = processEO();
 		} else {
-			// printf("\n%c - %d\n", current, current);
-			fprintf(wallshell_out_stream, "%c", current);
-			wallshell_internal_strcat_c(commandBuf, (char) current, MAX_COMMAND_BUF);
+			
+			wallshell_internal_insert_c(commandBuf, MAX_COMMAND_BUF, (char) current, current_position);
+			if (current_position != strlen(commandBuf)) {
+				CLEAR_ROW;
+				fprintf(wallshell_out_stream, "%s%s", prefix, commandBuf);
+				for (size_t i = strlen(commandBuf); i > current_position; i--) {
+					wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
+				}
+			} else {
+				fprintf(wallshell_out_stream, "%c", current);
+			}
+			current_position++;
+			//printf("current command: %s -> size: %llu -> pos: %zu\n", commandBuf, strlen(commandBuf), current_position);
 		}
 	}
 #ifndef CUSTOM_CONSOLE_SETUP
