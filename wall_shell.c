@@ -954,6 +954,7 @@ wallshell_error_t terminalMain() {
 				if (current_position != (strlen(commandBuf) + 1)) {
 					CLEAR_ROW;
 					fprintf(wallshell_out_stream, "%s%s", prefix, commandBuf);
+					wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
 					for (size_t i = strlen(commandBuf); i > current_position; i--) {
 						wallshell_move_cursor(CONSOLE_CURSOR_LEFT);
 					}
@@ -1170,9 +1171,9 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 #include <stdarg.h>
 bool promptUser(const char* format, ...) {
 	va_list arg;
-			va_start(arg, format);
+	va_start(arg, format);
 	vfprintf(wallshell_out_stream, format, arg);
-			va_end(arg);
+	va_end(arg);
 	
 	fprintf(wallshell_out_stream, " [Y/n] ");
 	int first_input = wallshell_get_char(wallshell_in_stream);
