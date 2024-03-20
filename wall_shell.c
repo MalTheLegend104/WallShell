@@ -574,7 +574,7 @@ int exitMain(int argc, char** argv) {
 	printf("\n");
 	return 0;
 }
-int exitHelp() {
+int exitHelp(int argc, char** argv) {
 	const char* optional[] = {
 			"--yes",
 			"-y   -> Exits the terminal without the prompt."
@@ -1175,9 +1175,9 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 #include <stdarg.h>
 bool promptUser(const char* format, ...) {
 	va_list arg;
-	va_start(arg, format);
+			va_start(arg, format);
 	vfprintf(wallshell_out_stream, format, arg);
-	va_end(arg);
+			va_end(arg);
 	
 	fprintf(wallshell_out_stream, " [Y/n] ");
 	int first_input = wallshell_get_char(wallshell_in_stream);
