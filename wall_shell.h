@@ -34,10 +34,10 @@
 
 #ifdef THREADED_SUPPORT
 // Add supported for threaded applications
+	void wallshell_sleep_wrapper(size_t ms);
 #endif // THREADED_SUPPORT
 
 #ifdef DISABLE_MALLOC
-// We're going to develop it for malloc first before implementing this
 	#ifndef COMMAND_LIMIT
 		#define COMMAND_LIMIT 25
 	#endif

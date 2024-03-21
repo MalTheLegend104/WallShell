@@ -3,6 +3,11 @@
 A big goal of WallShell is to use as little of the standard library (libc) as possible,
 while still providing a feature-rich command line interface.
 
+> Compiling for POSIX or Windows based systems require the usage of some system specific headers.
+> If this is a problem, you'll have to manually do `CUSTOM_CONSOLE_SETUP` (and `CUSTOM_THREAD_WRAPPER` if using
+> threads).
+> [See this for more details.](options.md)
+
 - All standard library function calls are expected to work as specified in the ISO C99 standard.
     - [glibc](https://www.gnu.org/software/libc/),
       [musl](https://musl.libc.org/),
@@ -12,10 +17,11 @@ while still providing a feature-rich command line interface.
 
 ### Note on MSVC
 
-MSVC (the Microsoft C Compiler) "deprecates" many of the libc functions used, stating that they are not thread-safe.
-This is irrelevent in WallShell. The contexts in which these functions are used ensure thread-safety.
-WallShell disables warning `4996` (which tells you the functions are deprecated and prevents you from compiling), only
-for the `wall_shell.c` source file.
+MSVC (the Microsoft C Compiler) "deprecates" many of the libc functions used, stating that they are not safe.
+This is irrelevent in WallShell. The contexts in which these functions are used ensure memory safety, including buffer
+bounds checks. WallShell disables warning `4996` (which tells you the functions are deprecated and prevents you from
+compiling),
+only for the `wall_shell.c` source file.
 
 > **NOTE:** The rest of this file is meant for freestanding environments.
 > If you are not compiling for a freestanding environment, or rolling your own libc, ignore the rest of this file.
@@ -68,4 +74,5 @@ These headers/functions typically have to be defined by your standard library (o
         - `stdin`
         - `stdout`
         - `stderr`
+        - `EOF`
         - These definitions don't necessarily have to do anything, they just need to be defined.

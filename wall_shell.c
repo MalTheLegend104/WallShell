@@ -136,6 +136,8 @@ bool backspace_as_ascii_delete = false;
 	#ifndef _WIN32
 		#include <termios.h>
 		#include <unistd.h>
+		#include <sys/select.h>
+		#include <fcntl.h>
 struct termios old_settings, new_settings;
 	#endif // _WIN32
 wallshell_error_t setConsoleMode() {
@@ -203,12 +205,53 @@ void resetConsoleState() {
 	#ifdef _WIN32
 		#include <conio.h>
 		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
-		#define wallshell_get_char(stream) _getch()
+		#define wallshell_get_char_blocking(stream) _getch()
 	#else
-		#define wallshell_get_char(stream) getchar()
+		#define PRINTING_NEEDS_FLUSH
 		#define SET_TERMINAL_LOCALE
+		#define wallshell_get_char_blocking(stream) getchar()
 	#endif // _WIN32
+
+int getCharNonBlocking() {
+#ifdef _WIN32
+	if (_kbhit()) {
+		return _getch();
+	} else {
+		return -2;
+	}
+#else
+	fd_set set;
+	FD_ZERO(&set);
+	FD_SET(STDIN_FILENO, &set);
+	struct timeval timeout = {0, 0}; // Immediate return
+	int ready = select(STDIN_FILENO + 1, &set, NULL, NULL, &timeout);
+	
+	if (ready == -1) {
+		perror("select");
+		exit(EXIT_FAILURE);
+	} else if (ready > 0) {
+		return getchar();
+	} else {
+		return -2;
+	}
+#endif
+}
+	#define wallshell_get_char(stream) getCharNonBlocking()
 #endif // CUSTOM_CONSOLE_SETUP
+
+#ifdef CUSTOM_THREAD_WRAPPER
+	#include <time.h>
+void wallshell_sleep(uint32_t ms) {
+#ifdef _WIN32
+	Sleep(ms);
+#else
+	struct timespec req = {0};
+	req.tv_sec = ms / 1000;
+	req.tv_nsec = (ms % 1000) * 1000000;
+	nanosleep(&req, NULL);
+#endif
+}
+#endif
 
 // To aid portability, we allow the user to set backspace_as_ascii_delete
 /**
@@ -368,6 +411,7 @@ wallshell_error_t registerCommand(const command_t c) {
 	return WALLSHELL_NO_ERROR;
 }
 
+// TODO do this
 void deregisterCommand(const command_t c) {
 
 }
@@ -552,7 +596,7 @@ int historyHelp(int argc, char** argv) {
 int historyMain(int argc, char** argv) {
 	setConsoleColors((console_color_t) {CONSOLE_FG_YELLOW, CONSOLE_BG_DEFAULT});
 	for (size_t i = 0; i < previous_commands_size; i++) {
-		printf("%s\n", previousCommands[i]);
+		fprintf(wallshell_out_stream, "%s\n", previousCommands[i]);
 	}
 	setConsoleColors(getDefaultColors());
 	return 0;
@@ -598,12 +642,15 @@ void registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 	registerCommand((command_t) {test, NULL, "test", NULL, 0});
+
 #ifndef NO_CLEAR_COMMAND
 	registerCommand((command_t) {clearMain, clearHelp, "clear", clear_aliases, 2});
 #endif // NO_CLEAR_COMMAND
+
 #ifndef NO_HELP_COMMAND
 	registerCommand((command_t) {helpMain, helpHelp, "help", NULL, 0});
 #endif // NO_HELP_COMMAND
+
 #ifndef NO_HISTORY_COMMAND
 	registerCommand((command_t) {historyMain, historyHelp, "history", history_aliases, 1});
 #endif // NO_HISTORY_COMMAND
@@ -661,7 +708,7 @@ input_result_t processVirtualSequence() {
 	// For simplicity's sake we're just going to preallocate a buffer for the input
 	// If it doesn't end up being used it's not a big deal.
 	input_result_t result = {NONE, 0};
-	int next = wallshell_get_char(wallshell_in_stream);
+	int next = wallshell_get_char_blocking(wallshell_in_stream);
 	if (next != '[' && next != 'O') {
 		fprintf(wallshell_out_stream, "%c", next);
 		return result;
@@ -671,10 +718,10 @@ input_result_t processVirtualSequence() {
 	int i = 0;
 	
 	// Read until we encounter a non-numeric character
-	next = wallshell_get_char(wallshell_in_stream);
+	next = wallshell_get_char_blocking(wallshell_in_stream);
 	while (next >= '0' && next <= '9' || next == ';') {
 		seq[i++] = (char) next;
-		next = wallshell_get_char(wallshell_in_stream);
+		next = wallshell_get_char_blocking(wallshell_in_stream);
 	}
 	seq[i] = '\0';
 	
@@ -706,7 +753,7 @@ input_result_t processVirtualSequence() {
 
 input_result_t processEO() {
 	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
-	int next = wallshell_get_char(wallshell_in_stream);
+	int next = wallshell_get_char_blocking(wallshell_in_stream);;
 	input_result_t result = {NONE, 0};
 	switch (next) {
 		case CONSOLE_CURSOR_UP:
@@ -854,6 +901,9 @@ wallshell_error_t terminalMain() {
 			current_position = 1;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
+#ifdef PRINTING_NEEDS_FLUSH
+			fflush(wallshell_out_stream);
+#endif
 		}
 		
 		// Check for the previous input results
@@ -909,9 +959,18 @@ wallshell_error_t terminalMain() {
 					default: break;
 				}
 			}
+#ifdef PRINTING_NEEDS_FLUSH
+			fflush(wallshell_out_stream);
+#endif
 		}
 		
 		int current = wallshell_get_char(wallshell_in_stream);
+		
+		if (current == -2) {
+			wallshell_sleep(10);
+			continue;
+		}
+		
 		if (backspace_as_ascii_delete && current == 0x7f)
 			current = '\b';
 		if (current == '\n' || current == '\r') {
@@ -1059,6 +1118,9 @@ wallshell_error_t terminalMain() {
 			current_position++;
 			//printf("current command: %s -> size: %llu -> pos: %zu\n", commandBuf, strlen(commandBuf), current_position);
 		}
+#ifdef PRINTING_NEEDS_FLUSH
+		fflush(wallshell_out_stream);
+#endif
 	}
 #ifndef CUSTOM_CONSOLE_SETUP
 	resetConsoleState();
@@ -1175,16 +1237,22 @@ void printSpecificHelp(help_entry_specific_t* entry) {
 #include <stdarg.h>
 bool promptUser(const char* format, ...) {
 	va_list arg;
-			va_start(arg, format);
+	va_start(arg, format);
 	vfprintf(wallshell_out_stream, format, arg);
-			va_end(arg);
+	va_end(arg);
 	
 	fprintf(wallshell_out_stream, " [Y/n] ");
-	int first_input = wallshell_get_char(wallshell_in_stream);
+	int first_input;
+	do {
+		first_input = wallshell_get_char(wallshell_in_stream);
+		wallshell_sleep(10);
+	} while (first_input == -2);
 	fprintf(wallshell_out_stream, "%c", first_input);
 	int input;
 	do {
-		input = wallshell_get_char(wallshell_in_stream);
+		do {
+			input = wallshell_get_char(wallshell_in_stream);
+		} while (input == -2);
 		fprintf(wallshell_out_stream, "%c", input);
 	} while (input != '\n');
 	if (first_input == 'Y' || first_input == 'y') return true;

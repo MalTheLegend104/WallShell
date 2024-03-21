@@ -3,11 +3,11 @@ project(WallShell C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+# set(CMAKE_C_EXTENSIONS OFF)
 
 #configure doing this or using wallshell_config.h
 # add_definitions(-DNO_BASIC_COMMANDS)
-# add_definitions(-DDISABLE_MALLOC)
+add_definitions(-DCUSTOM_THREAD_WRAPPER)
 
 add_executable(WallShell
 		wall_shell.h

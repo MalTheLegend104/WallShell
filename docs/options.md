@@ -10,6 +10,14 @@ MAX_COMMAND_BUF
 
 THREADED_SUPPORT
 
+Not implemented yet. There isn't wide libc support (not in glibc nor msvc) for the C11 `threads.h`.
+
+- A solution will likely come out later, with a wrapper around `pthreads` and Window's threads.
+- As a result of this, any non-unix or windows based machines would have to implement their own thread wrapper.
+    - This shouldn't be a large undertaking. WallShell only uses `mutex`'s and an `atomic_bool`.
+
+CUSTOM_THREAD_WRAPPER
+
 DISABLE_MALLOC
 
 - Meant for freestanding environments that don't necessarily have access to normal memory allocation.
@@ -17,6 +25,22 @@ DISABLE_MALLOC
 - You have to be very careful as to what context things are defined in.
     - Defining things like aliases in the scope of a function can lead to major problems.
     - [See this for more specifics.](disable_malloc.md)
+
+There are two parameters as a result of disabling malloc:
+
+- COMMAND_LIMIT
+    - Sets the maximum amount of commands that can be added to the handler.
+    - Defaults to 25
+    - You should set it to be the amount of commands you are using.
+        - If you need to dynamically add/remove commands during runtime, make sure you make this big enough to
+          accommodate that.
+    - If you try to add more commands after it's reached the maximum, it just ignores the new commands.
+- MAX_ARGS
+    - Max amount of arguments in `argv`. Normally there is limitless arguments in argv (as long as it fits within
+      MAX_COMMAND_BUF).
+    - Defaults to 32
+        - 32 should be a reasonable maximum, but if you find yourself using more than 32 arguments, increase this.
+        - This doesn't necessarily have a large impact on memory usage, but making it excessively large will.
 
 CUSTOM_CURSOR_CONTROL
 
@@ -57,3 +81,7 @@ You can disable individual commands one at a time.
 > Both work on `DISABLE_MALLOC` and `THREADED_SUPPORT`.
 
 CUSTOM_CONSOLE_SETUP
+
+wallshell_get_char (non-blocking)
+wallshell_get_char_blocking
+PRINTING_NEEDS_FLUSH
