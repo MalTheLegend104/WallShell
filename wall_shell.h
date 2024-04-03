@@ -33,8 +33,8 @@
 #endif // MAX_COMMAND_BUF
 
 #ifdef THREADED_SUPPORT
-// Add supported for threaded applications
-	void wallshell_sleep_wrapper(size_t ms);
+
+
 #endif // THREADED_SUPPORT
 
 #ifdef DISABLE_MALLOC

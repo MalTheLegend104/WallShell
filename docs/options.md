@@ -10,13 +10,30 @@ MAX_COMMAND_BUF
 
 THREADED_SUPPORT
 
-Not implemented yet. There isn't wide libc support (not in glibc nor msvc) for the C11 `threads.h`.
+Adds support for a threaded implementation of WallShell.
+This allows you to use it in its own thread, separate from your main program.
 
-- A solution will likely come out later, with a wrapper around `pthreads` and Window's threads.
-- As a result of this, any non-unix or windows based machines would have to implement their own thread wrapper.
-    - This shouldn't be a large undertaking. WallShell only uses `mutex`'s and an `atomic_bool`.
+- Provides a wrapper around `mutex` for `pthread` and windows threads.
+- Provides an implementation of an `atomic_bool`.
 
-CUSTOM_THREAD_WRAPPER
+> If you are using WallShell in a freestanding environment, see the `CUSTOM_THREADS` flag.
+
+CUSTOM_THREADS
+
+You must implement the following:
+
+```c
+typedef /* Mutex type */ wallshell_mutex_t;
+typedef /* ThreadID Type */ wallshell_thread_id_t;
+
+void wallshell_lockMutex(wallshell_mutex_t* mut);
+void wallshell_unlockMutex(wallshell_mutex_t* mut);
+wallshell_mutex_t* wallshell_createMutex();
+void wallshell_destroyMutex(wallshell_mutex_t* mut);
+
+wallshell_thread_id_t getThreadID();
+void wallshell_printThreadID(FILE* stream);
+```
 
 DISABLE_MALLOC
 
