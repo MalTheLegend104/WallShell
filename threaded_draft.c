@@ -11,127 +11,131 @@
 
 #ifdef _WIN32
 #include <Windows.h>
-typedef CRITICAL_SECTION wallshell_mutex_t;
-typedef DWORD wallshell_thread_id_t;
+typedef CRITICAL_SECTION ws_mutex_t;
+typedef DWORD ws_thread_id_t;
 
 #else
 #include <pthread.h>
-typedef pthread_mutex_t wallshell_mutex_t;
-typedef uint64_t wallshell_thread_id_t;
+typedef pthread_mutex_t ws_mutex_t;
+typedef uint64_t ws_thread_id_t;
 #endif // _WIN32
 
 #endif
 
-FILE* wallshell_out_stream;
-wallshell_mutex_t* internal_mutex;
+FILE* ws_out_stream;
+ws_mutex_t* internal_mutex;
 
-void wallshell_lockMutex(wallshell_mutex_t* mut);
-void wallshell_unlockMutex(wallshell_mutex_t* mut);
-wallshell_mutex_t* wallshell_createMutex();
-void wallshell_destroyMutex(wallshell_mutex_t* mut);
-wallshell_thread_id_t wallshell_getThreadID();
-void wallshell_internal_printThreadID(FILE* stream);
+void ws_lockMutex(ws_mutex_t* mut);
+void ws_unlockMutex(ws_mutex_t* mut);
+
+ws_mutex_t* ws_createMutex();
+void ws_destroyMutex(ws_mutex_t* mut);
+
+ws_thread_id_t ws_getThreadID();
+void ws_internal_printThreadID(FILE* stream);
+
+void ws_sleep(size_t ms);
 
 #ifndef CUSTOM_THREADS
 
 #ifdef _WIN32
-void wallshell_lockMutex(wallshell_mutex_t* mut) { EnterCriticalSection(mut); }
-void wallshell_unlockMutex(wallshell_mutex_t* mut) { LeaveCriticalSection(mut); }
+void ws_lockMutex(ws_mutex_t* mut) { EnterCriticalSection(mut); }
+void ws_unlockMutex(ws_mutex_t* mut) { LeaveCriticalSection(mut); }
 
-wallshell_mutex_t* wallshell_createMutex() {
-	wallshell_mutex_t* mut = (wallshell_mutex_t*) malloc(sizeof(wallshell_mutex_t));
+ws_mutex_t* ws_createMutex() {
+	ws_mutex_t* mut = (ws_mutex_t*) malloc(sizeof(ws_mutex_t));
 	if (mut == NULL) return NULL;
 	InitializeCriticalSection(mut);
 	return mut;
 }
 
-void wallshell_destroyMutex(wallshell_mutex_t* mut) {
-	wallshell_lockMutex(mut);
+void ws_destroyMutex(ws_mutex_t* mut) {
+	ws_lockMutex(mut);
 	DeleteCriticalSection(mut);
 	free(mut);
 }
 
-wallshell_thread_id_t wallshell_getThreadID() { return GetCurrentThreadId(); }
-void wallshell_internal_printThreadID(FILE* stream) { fprintf(stream, "%lu", wallshell_getThreadID()); }
+ws_thread_id_t ws_getThreadID() { return GetCurrentThreadId(); }
+void ws_internal_printThreadID(FILE* stream) { fprintf(stream, "%lu", ws_getThreadID()); }
 
 #else
 
-void wallshell_lockMutex(wallshell_mutex_t* mut) { pthread_mutex_lock(mut); }
-void wallshell_unlockMutex(wallshell_mutex_t* mut) { pthread_mutex_unlock(mut); }
-wallshell_mutex_t* wallshell_createMutex() {
-	wallshell_mutex_t* mut = (wallshell_mutex_t*) malloc(sizeof(wallshell_mutex_t));
+void ws_lockMutex(ws_mutex_t* mut) { pthread_mutex_lock(mut); }
+void ws_unlockMutex(ws_mutex_t* mut) { pthread_mutex_unlock(mut); }
+ws_mutex_t* ws_createMutex() {
+	ws_mutex_t* mut = (ws_mutex_t*) malloc(sizeof(ws_mutex_t));
 	if (mut == NULL) return NULL;
 	pthread_mutex_init(mut, NULL);
 	return mut;
 }
-void wallshell_destroyMutex(wallshell_mutex_t* mut) {
-	wallshell_lockMutex(mut);
+void ws_destroyMutex(ws_mutex_t* mut) {
+	ws_lockMutex(mut);
 	pthread_mutex_destroy(mut);
 	free(mut);
 }
-wallshell_thread_id_t wallshell_getThreadID() { return pthread_self(); }
-void wallshell_internal_printThreadID(FILE* stream) { fprintf(stream, "%zu", wallshell_getThreadID()); }
+ws_thread_id_t ws_getThreadID() { return pthread_self(); }
+void ws_internal_printThreadID(FILE* stream) { fprintf(stream, "%zu", ws_getThreadID()); }
 #endif // _WIN32
 #endif // CUSTOM_THREADS
 
 typedef struct {
 	bool b;
-	wallshell_mutex_t* mut;
-} wallshell_atomic_bool_t;
+	ws_mutex_t* mut;
+} ws_atomic_bool_t;
 
-bool wallshell_getAtomicBool(wallshell_atomic_bool_t* ab) {
+bool ws_getAtomicBool(ws_atomic_bool_t* ab) {
 	bool ret;
-	wallshell_lockMutex(ab->mut);
+	ws_lockMutex(ab->mut);
 	ret = ab->b;
-	wallshell_unlockMutex(ab->mut);
+	ws_unlockMutex(ab->mut);
 	return ret;
 }
 
-void wallshell_setAtomicBool(wallshell_atomic_bool_t* ab, bool b) {
-	wallshell_lockMutex(ab->mut);
+void ws_setAtomicBool(ws_atomic_bool_t* ab, bool b) {
+	ws_lockMutex(ab->mut);
 	ab->b = b;
-	wallshell_unlockMutex(ab->mut);
+	ws_unlockMutex(ab->mut);
 }
 
-wallshell_atomic_bool_t* wallshell_createAtomicBool(bool b) {
-	wallshell_atomic_bool_t* ab = (wallshell_atomic_bool_t*) malloc(sizeof(wallshell_atomic_bool_t));
+ws_atomic_bool_t* ws_createAtomicBool(bool b) {
+	ws_atomic_bool_t* ab = (ws_atomic_bool_t*) malloc(sizeof(ws_atomic_bool_t));
 	if (ab == NULL) return NULL;
 	ab->b = b;
-	ab->mut = wallshell_createMutex();
+	ab->mut = ws_createMutex();
 	return ab;
 }
 
-void wallshell_destroyAtomicBool(wallshell_atomic_bool_t* ab) {
-	wallshell_lockMutex(ab->mut);
-	wallshell_destroyMutex(ab->mut);
+void ws_destroyAtomicBool(ws_atomic_bool_t* ab) {
+	ws_lockMutex(ab->mut);
+	ws_destroyMutex(ab->mut);
 	free(ab);
 }
 
 #ifdef WALLSHELL_LOGGING
 typedef struct {
 	char* name;
-	wallshell_thread_id_t id;
-} wallshell_thread_map_t;
+	ws_thread_id_t id;
+} ws_thread_map_t;
 
-wallshell_thread_map_t* thread_map = NULL;
+ws_thread_map_t* thread_map = NULL;
 size_t thread_map_size = 0;
 size_t thread_map_current = 0;
 
-wallshell_mutex_t* thread_map_mut = NULL;
+ws_mutex_t* thread_map_mut = NULL;
 
-void wallshell_addThreadName(char* name) {
+void ws_addThreadName(char* name) {
 	if (!thread_map_mut) {
-		thread_map_mut = wallshell_createMutex();
+		thread_map_mut = ws_createMutex();
 		if (!thread_map_mut) return;
 	}
-	wallshell_lockMutex(thread_map_mut);
+	ws_lockMutex(thread_map_mut);
 	if (!thread_map) {
-		thread_map = (wallshell_thread_map_t*) calloc(1, sizeof(wallshell_thread_map_t));
+		thread_map = (ws_thread_map_t*) calloc(1, sizeof(ws_thread_map_t));
 		if (!thread_map) return;
 		thread_map_size++;
 	}
 	if (thread_map_size - 1 < thread_map_current) {
-		wallshell_thread_map_t* temp = realloc(thread_map, (thread_map_size + 1) * sizeof(wallshell_thread_map_t));
+		ws_thread_map_t* temp = realloc(thread_map, (thread_map_size + 1) * sizeof(ws_thread_map_t));
 		if (!temp) return;
 		thread_map = temp;
 		thread_map_size++;
@@ -144,18 +148,18 @@ void wallshell_addThreadName(char* name) {
 	strcpy_s(thread_name, strlen(name), name);
 #endif
 	thread_map[thread_map_current].name = thread_name;
-	thread_map[thread_map_current].id = wallshell_getThreadID();
+	thread_map[thread_map_current].id = ws_getThreadID();
 	
 	thread_map_current++;
-	wallshell_unlockMutex(thread_map_mut);
+	ws_unlockMutex(thread_map_mut);
 }
 
-void wallshell_removeThreadName(const char* name) {
+void ws_removeThreadName(const char* name) {
 	if (!thread_map_mut) {
-		thread_map_mut = wallshell_createMutex();
+		thread_map_mut = ws_createMutex();
 		if (!thread_map_mut) return;
 	}
-	wallshell_lockMutex(thread_map_mut);
+	ws_lockMutex(thread_map_mut);
 	
 	if (!thread_map) return;
 	if (thread_map_current == 0) return;
@@ -168,7 +172,7 @@ void wallshell_removeThreadName(const char* name) {
 				thread_map[j].id = thread_map[j + 1].id;
 				thread_map[j].name = thread_map[j + 1].name;
 			}
-			wallshell_unlockMutex(thread_map_mut);
+			ws_unlockMutex(thread_map_mut);
 			return;
 		}
 	}

@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 /* Standard Library Headers */
 #include <string.h>
@@ -33,8 +34,51 @@
 #endif // MAX_COMMAND_BUF
 
 #ifdef THREADED_SUPPORT
+	#ifdef DISABLE_MALLOC
+		#error "Threaded support can't exist without malloc."
+	#endif
+	
+	#ifndef CUSTOM_THREADS
+		#ifdef _WIN32
+#include <Windows.h>
+typedef CRITICAL_SECTION ws_mutex_t;
+typedef DWORD ws_thread_id_t;
+		
+		#else
+#include <pthread.h>
+typedef pthread_mutex_t ws_mutex_t;
+typedef uint64_t ws_thread_id_t;
+		#endif // _WIN32
+	#endif
+/* Mutex */
+void ws_lockMutex(ws_mutex_t* mut);
+void ws_unlockMutex(ws_mutex_t* mut);
+ws_mutex_t* ws_createMutex();
+void ws_destroyMutex(ws_mutex_t* mut);
 
+/* Thread ID */
+ws_thread_id_t ws_getThreadID();
 
+/* Atomic Bool */
+typedef struct {
+	bool b;
+	ws_mutex_t* mut;
+} ws_atomic_bool_t;
+
+bool ws_getAtomicBool(ws_atomic_bool_t* ab);
+void ws_setAtomicBool(ws_atomic_bool_t* ab, bool b);
+ws_atomic_bool_t* ws_createAtomicBool(bool b);
+void ws_destroyAtomicBool(ws_atomic_bool_t* ab);
+
+void ws_sleep(size_t ms);
+
+/* Thread names for logging */
+	#ifndef NO_WALLSHELL_LOGGING
+void ws_setThreadName(char* name);
+void ws_removeThreadName(const char* name);
+void ws_printThreadID();
+void ws_doPrintThreadID(bool b);
+	#endif // NO_WALLSHELL_LOGGING
 #endif // THREADED_SUPPORT
 
 #ifdef DISABLE_MALLOC
@@ -52,8 +96,8 @@ typedef enum {
 	WALLSHELL_COMMAND_LIMIT_REACHED,
 	WALLSHELL_OUT_STREAM_NOT_SET,
 	WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT,
-	WALLSHELL_CONSOLE_SETUP_ERROR
-} wallshell_error_t;
+	WALLSHELL_WS_SETUP_ERROR
+} ws_error_t;
 
 /**
  * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
@@ -64,7 +108,7 @@ typedef struct {
 	const char* commandName;
 	const char** aliases;
 	size_t aliases_count;
-} command_t;
+} ws_command_t;
 
 /**
  * @brief General help structure. Makes printing help menu entries consistent across different functions.
@@ -79,7 +123,7 @@ typedef struct {
 	const int commands_count;
 	const char** aliases;
 	const int aliases_count;
-} help_entry_general_t;
+} ws_help_entry_general_t;
 
 /**
  * @brief Specific help structure. Makes printing help menu entries consistent across different functions.
@@ -94,100 +138,117 @@ typedef struct {
 	const int required_count;
 	const char** optional;
 	const int optional_count;
-} help_entry_specific_t;
+} ws_help_entry_specific_t;
 
 typedef enum {
-	CONSOLE_FG_DEFAULT = 0,
-	CONSOLE_FG_BLACK = 30,
-	CONSOLE_FG_RED = 31,
-	CONSOLE_FG_GREEN = 32,
-	CONSOLE_FG_YELLOW = 33,
-	CONSOLE_FG_BLUE = 34,
-	CONSOLE_FG_MAGENTA = 35,
-	CONSOLE_FG_CYAN = 36,
-	CONSOLE_FG_WHITE = 37,
+	WS_FG_DEFAULT = 0,
+	WS_FG_BLACK = 30,
+	WS_FG_RED = 31,
+	WS_FG_GREEN = 32,
+	WS_FG_YELLOW = 33,
+	WS_FG_BLUE = 34,
+	WS_FG_MAGENTA = 35,
+	WS_FG_CYAN = 36,
+	WS_FG_WHITE = 37,
 	
-	CONSOLE_FG_BRIGHT_BLACK = 90,
-	CONSOLE_FG_BRIGHT_RED = 91,
-	CONSOLE_FG_BRIGHT_GREEN = 92,
-	CONSOLE_FG_BRIGHT_YELLOW = 93,
-	CONSOLE_FG_BRIGHT_BLUE = 94,
-	CONSOLE_FG_BRIGHT_MAGENTA = 95,
-	CONSOLE_FG_BRIGHT_CYAN = 96,
-	CONSOLE_FG_BRIGHT_WHITE = 97,
-} console_fg_color_t;
+	WS_FG_BRIGHT_BLACK = 90,
+	WS_FG_BRIGHT_RED = 91,
+	WS_FG_BRIGHT_GREEN = 92,
+	WS_FG_BRIGHT_YELLOW = 93,
+	WS_FG_BRIGHT_BLUE = 94,
+	WS_FG_BRIGHT_MAGENTA = 95,
+	WS_FG_BRIGHT_CYAN = 96,
+	WS_FG_BRIGHT_WHITE = 97,
+} ws_fg_color_t;
 
 typedef enum {
-	CONSOLE_BG_DEFAULT = 0,
-	CONSOLE_BG_BLACK = 40,
-	CONSOLE_BG_RED = 41,
-	CONSOLE_BG_GREEN = 42,
-	CONSOLE_BG_YELLOW = 43,
-	CONSOLE_BG_BLUE = 44,
-	CONSOLE_BG_MAGENTA = 45,
-	CONSOLE_BG_CYAN = 46,
-	CONSOLE_BG_WHITE = 47,
+	WS_BG_DEFAULT = 0,
+	WS_BG_BLACK = 40,
+	WS_BG_RED = 41,
+	WS_BG_GREEN = 42,
+	WS_BG_YELLOW = 43,
+	WS_BG_BLUE = 44,
+	WS_BG_MAGENTA = 45,
+	WS_BG_CYAN = 46,
+	WS_BG_WHITE = 47,
 	
-	CONSOLE_BG_BRIGHT_BLACK = 100,
-	CONSOLE_BG_BRIGHT_RED = 101,
-	CONSOLE_BG_BRIGHT_GREEN = 102,
-	CONSOLE_BG_BRIGHT_YELLOW = 103,
-	CONSOLE_BG_BRIGHT_BLUE = 104,
-	CONSOLE_BG_BRIGHT_MAGENTA = 105,
-	CONSOLE_BG_BRIGHT_CYAN = 106,
-	CONSOLE_BG_BRIGHT_WHITE = 107,
-} console_bg_color_t;
+	WS_BG_BRIGHT_BLACK = 100,
+	WS_BG_BRIGHT_RED = 101,
+	WS_BG_BRIGHT_GREEN = 102,
+	WS_BG_BRIGHT_YELLOW = 103,
+	WS_BG_BRIGHT_BLUE = 104,
+	WS_BG_BRIGHT_MAGENTA = 105,
+	WS_BG_BRIGHT_CYAN = 106,
+	WS_BG_BRIGHT_WHITE = 107,
+} ws_bg_color_t;
 
 typedef struct {
-	console_fg_color_t foreground;
-	console_bg_color_t background;
-} console_color_t;
+	ws_fg_color_t foreground;
+	ws_bg_color_t background;
+} ws_color_t;
 
 /* Console Color Configuration */
-console_color_t getCurrentColors();
-console_color_t getDefaultColors();
-void setConsoleDefaults(console_color_t c);
-void setConsoleForegroundDefault(console_fg_color_t c);
-void setConsoleBackgroundDefault(console_bg_color_t c);
-wallshell_error_t setForegroundColor(console_fg_color_t color);
-wallshell_error_t setBackgroundColor(console_bg_color_t color);
-wallshell_error_t setConsoleColors(console_color_t colors);
+ws_color_t ws_getCurrentColors();
+ws_color_t ws_getDefaultColors();
+void ws_setDefaultColors(ws_color_t c);
+void ws_setForegroundDefault(ws_fg_color_t c);
+void ws_setBackgroundDefault(ws_bg_color_t c);
+ws_error_t ws_setForegroundColor(ws_fg_color_t color);
+ws_error_t ws_setBackgroundColor(ws_bg_color_t color);
+ws_error_t ws_setConsoleColors(ws_color_t colors);
 
 /* Stream configurations. */
 typedef enum {
 	WALLSHELL_INPUT,
 	WALLSHELL_OUTPUT,
 	WALLSHELL_ERROR
-} wallshell_stream;
+} ws_stream;
 
-void setStream(wallshell_stream type, FILE* stream);
+void ws_setStream(ws_stream type, FILE* stream);
 
 /* Cursors */
 typedef enum {
-	CONSOLE_CURSOR_LEFT = 0x4b,
-	CONSOLE_CURSOR_RIGHT = 0x4d,
-	CONSOLE_CURSOR_UP = 0x48,
-	CONSOLE_CURSOR_DOWN = 0x50,
-} console_cursor_t;
+	WS_CURSOR_LEFT = 0x4b,
+	WS_CURSOR_RIGHT = 0x4d,
+	WS_CURSOR_UP = 0x48,
+	WS_CURSOR_DOWN = 0x50,
+} ws_cursor_t;
 
-void wallshell_move_cursor(console_cursor_t direction);
-void wallshell_move_cursor_n(console_cursor_t direction, size_t n);
+void ws_moveCursor(ws_cursor_t direction);
+void ws_moveCursor_n(ws_cursor_t direction, size_t n);
 
 /* General operations */
-wallshell_error_t registerCommand(const command_t c);
-void deregisterCommand(const command_t c);
-wallshell_error_t executeCommand(char* commandBuf);
-wallshell_error_t terminalMain();
+ws_error_t ws_registerCommand(const ws_command_t c);
+void ws_deregisterCommand(const ws_command_t c);
+ws_error_t ws_executeCommand(char* commandBuf);
+ws_error_t ws_terminalMain();
 
 /* Console Setup */
-void setAsciiDeleteAsBackspace(bool b);
-void setConsoleLocale();
-void setConsolePrefix(const char* newPrefix);
-void initializeDefaultStreams();
+void ws_setAsciiDeleteAsBackspace(bool b);
+void ws_setConsoleLocale();
+void ws_setConsolePrefix(const char* newPrefix);
+void ws_initializeDefaultStreams();
 
 /* Utility functions */
-void printGeneralHelp(help_entry_general_t* entry);
-void printSpecificHelp(help_entry_specific_t* entry);
-bool promptUser(const char* format, ...);
-bool compareCommands(const command_t c1, const command_t c2);
+void ws_printGeneralHelp(ws_help_entry_general_t* entry);
+void ws_printSpecificHelp(ws_help_entry_specific_t* entry);
+bool ws_promptUser(const char* format, ...);
+bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2);
+
+/* Logger */
+#ifndef NO_WALLSHELL_LOGGING
+typedef enum {
+	WS_LOG,
+	WS_DEBUG,
+	WS_INFO,
+	WS_WARN,
+	WS_ERROR,
+	WS_FATAL
+} ws_logtype_t;
+
+void ws_logger(ws_logtype_t type, const char* format, ...);
+void ws_vlogger(ws_logtype_t type, const char* format, va_list args);
+void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg);
+#endif // NO_WALLSHELL_LOGGING
+
 #endif // COMMAND_HANDLER_H

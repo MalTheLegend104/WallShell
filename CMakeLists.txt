@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 #configure doing this or using wallshell_config.h
 # add_definitions(-DNO_BASIC_COMMANDS)
-add_definitions(-DCUSTOM_THREAD_WRAPPER)
+add_definitions(-DTHREADED_SUPPORT)
 
 add_executable(WallShell
 		wall_shell.h

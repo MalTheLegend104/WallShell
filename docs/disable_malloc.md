@@ -51,7 +51,7 @@ int example_help(int argc, char** argv) {
 					optional,
 					1
 				};
-				printSpecificHelp(&entry);
+				ws_printSpecificHelp(&entry);
 			}
 			// Check for other specific commands as you wish
 		}
@@ -71,7 +71,7 @@ int example_help(int argc, char** argv) {
 			2
 		};
 
-		printGeneralHelp(&entry);
+		ws_printGeneralHelp(&entry);
 	}
 
 	return 0;
@@ -82,8 +82,8 @@ int example_help(int argc, char** argv) {
 // Somewhere that can see example_aliases & both function declarations
 int main() {
 	// Initialization code
-	registerCommand((command_t) {example_command, example_help, "example", example_aliases, 2});
+	ws_registerCommand((ws_command_t) {example_command, example_help, "example", example_aliases, 2});
 	// Register other commands
-	terminalMain();
+	ws_terminalMain();
 }
 ```
