@@ -7,13 +7,6 @@
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-// Thread Wrapper
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
 // General header & compiler config
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -109,6 +102,11 @@ FILE* ws_out_stream = NULL;
 FILE* ws_err_stream = NULL;
 FILE* ws_in_stream = NULL;
 
+/**
+ * @brief Sets the stream to the provided one.
+ * @param type Type of stream to change.
+ * @param stream Stream you wish to change it to.
+ */
 void ws_setStream(ws_stream type, FILE* stream) {
 	switch (type) {
 		case WALLSHELL_INPUT: ws_in_stream = stream;
@@ -121,10 +119,19 @@ void ws_setStream(ws_stream type, FILE* stream) {
 	}
 }
 
+/**
+ * @brief Initialize all streams to their defaults. All default to their std-versions. (stdout, stderr, stdin)
+ */
 void ws_initializeDefaultStreams() {
 	ws_setStream(WALLSHELL_INPUT, stdin);
 	ws_setStream(WALLSHELL_ERROR, stderr);
 	ws_setStream(WALLSHELL_OUTPUT, stdout);
+}
+
+void ws_internal_cleanStreams() {
+	ws_out_stream = NULL;
+	ws_err_stream = NULL;
+	ws_in_stream = NULL;
 }
 
 #ifndef CLEAR_ROW
@@ -146,6 +153,11 @@ bool backspace_as_ascii_delete = false;
 		#include <fcntl.h>
 struct termios old_settings, new_settings;
 	#endif // _WIN32
+/**
+ * @brief Sets the console mode to the state that WallShell needs.
+ * This includes enabling virtual terminal input/output, disabling input buffering, and disabling echo input.
+ * @return WALLSHELL_WS_SETUP_ERROR if unsuccessful, WALLSHELL_NO_ERROR otherwise.
+ */
 ws_error_t setConsoleMode() {
 #ifdef _WIN32
 	// Set output mode to handle virtual terminal sequences
@@ -201,7 +213,10 @@ ws_error_t setConsoleMode() {
 	return WALLSHELL_NO_ERROR;
 }
 
-void resetConsoleState() {
+/**
+ * @brief Resets the console state. This is called automatically by ws_cleanAll().
+ */
+void ws_resetConsoleState() {
 #ifndef _WIN32
 	// Restore original terminal settings
 	tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
@@ -245,20 +260,6 @@ int getCharNonBlocking() {
 	#define ws_get_char(stream) getCharNonBlocking()
 #endif // CUSTOM_WS_SETUP
 
-#ifdef CUSTOM_THREAD_WRAPPER
-	#include <time.h>
-void ws_sleep(uint32_t ms) {
-#ifdef _WIN32
-	Sleep(ms);
-#else
-	struct timespec req = {0};
-	req.tv_sec = ms / 1000;
-	req.tv_nsec = (ms % 1000) * 1000000;
-	nanosleep(&req, NULL);
-#endif
-}
-#endif
-
 // To aid portability, we allow the user to set backspace_as_ascii_delete
 /**
  * @brief Some consoles send backspace as ASCII delete (0x7f) instead of '\b'.
@@ -283,7 +284,7 @@ void ws_setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
 /* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
 	#define RESET_CONSOLE                   fprintf(ws_out_stream, "\033[0m")
 
-void changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
+void ws_internal_changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
 	if (fg == WS_FG_DEFAULT || bg == WS_BG_DEFAULT) {
 		RESET_CONSOLE;
 	}
@@ -297,28 +298,9 @@ void changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
 	}
 }
 	
-	#define SET_WS_COLORS(a, b) changeConsoleColor(a, b);
+	#define SET_WS_COLORS(a, b) ws_internal_changeConsoleColor(a, b);
 
 #endif // CUSTOM_WS_COLORS
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-// Buffer declarations. Also checks for malloc usage to configure the buffers.
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-#ifdef DISABLE_MALLOC
-command_t commands[COMMAND_LIMIT];
-size_t command_size = COMMAND_LIMIT;
-#else
-ws_command_t* commands;
-size_t command_size = 0;
-#endif
-
-size_t current_command_spot = 0;
-size_t amount_of_commands;
-
-char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
-size_t previous_commands_size;
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -354,7 +336,7 @@ void ws_internal_cleanColors() {
 	current_colors.background = WS_BG_DEFAULT;
 }
 
-ws_error_t updateColors() {
+ws_error_t ws_internal_updateColors() {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
 	if (!ws_out_stream) return WALLSHELL_OUT_STREAM_NOT_SET;
@@ -369,12 +351,21 @@ ws_error_t updateColors() {
 	return WALLSHELL_NO_ERROR;
 }
 
+/**
+ * @brief Set the default foreground color.
+ * @param c Color to set the default to.
+ */
 void ws_setForegroundDefault(ws_fg_color_t c) {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
 	default_colors.foreground = c;
 	UNLOCK_COLOR_MUTEX;
 }
+
+/**
+ * @brief Set the default background color.
+ * @param c Color to set the default to.
+ */
 void ws_setBackgroundDefault(ws_bg_color_t c) {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
@@ -382,35 +373,65 @@ void ws_setBackgroundDefault(ws_bg_color_t c) {
 	UNLOCK_COLOR_MUTEX;
 }
 
+/**
+ * @brief Set the default colors to the provided ones.
+ * @param c Colors to set the defaults to.
+ */
 void ws_setDefaultColors(ws_color_t c) {
 	ws_setForegroundDefault(c.foreground);
 	ws_setBackgroundDefault(c.background);
 }
 
+/**
+ * @brief Get the current console colors.
+ * @return  The ws_color_t of the current colors.
+ */
 ws_color_t ws_getCurrentColors() { return current_colors; }
+
+/**
+ * @brief Get the current default colors.
+ * @return The ws_color_t of the default colors.
+ */
 ws_color_t ws_getDefaultColors() { return default_colors; }
 
+/**
+ * @brief Set the background and foreground colors to the provided ones.
+ * @param colors Colors to set the background and foreground to.
+ * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ */
 ws_error_t ws_setConsoleColors(ws_color_t colors) {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
 	current_colors.foreground = colors.foreground;
 	current_colors.background = colors.background;
 	UNLOCK_COLOR_MUTEX;
-	return updateColors();
+	return ws_internal_updateColors();
 }
+
+/**
+ * @brief Sets the foreground color to the provided color.
+ * @param color Color to set the foreground to.
+ * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ */
 ws_error_t ws_setForegroundColor(ws_fg_color_t color) {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
 	current_colors.foreground = color;
 	UNLOCK_COLOR_MUTEX;
-	return updateColors();
+	return ws_internal_updateColors();
 }
+
+/**
+ * @brief Sets the background color to the provided color.
+ * @param color Color to set the background to.
+ * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ */
 ws_error_t ws_setBackgroundColor(ws_bg_color_t color) {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
 	current_colors.background = color;
 	UNLOCK_COLOR_MUTEX;
-	return updateColors();
+	return ws_internal_updateColors();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -422,9 +443,21 @@ ws_error_t ws_setBackgroundColor(ws_bg_color_t color) {
 #ifndef CUSTOM_THREADS
 
 #ifdef _WIN32
+/**
+ * @brief Locks the provided mutex.
+ * @param mut Mutex to be locked.
+ */
 void ws_lockMutex(ws_mutex_t* mut) { EnterCriticalSection(mut); }
+/**
+ * @brief Unlocks the provided mutex.
+ * @param mut Mutex to be unlocked.
+ */
 void ws_unlockMutex(ws_mutex_t* mut) { LeaveCriticalSection(mut); }
 
+/**
+ * @brief Create a mutex.
+ * @return Pointer to a mutex object if successful, NULL otherwise.
+ */
 ws_mutex_t* ws_createMutex() {
 	ws_mutex_t* mut = (ws_mutex_t*) malloc(sizeof(ws_mutex_t));
 	if (mut == NULL) return NULL;
@@ -432,19 +465,31 @@ ws_mutex_t* ws_createMutex() {
 	return mut;
 }
 
+/**
+ * @brief Destroys the provided mutex.
+ * @param mut mutex to be destroyed.
+ */
 void ws_destroyMutex(ws_mutex_t* mut) {
+	if (!mut) return;
 	ws_lockMutex(mut);
 	DeleteCriticalSection(mut);
 	free(mut);
 }
 
+/**
+ * @brief Gets the threadID of the calling thread.
+ * @return ws_thread_id_t relating to the calling thread.
+ */
 ws_thread_id_t ws_getThreadID() { return GetCurrentThreadId(); }
 void ws_internal_printThreadID(FILE* stream) { fprintf(stream, "%lu", ws_getThreadID()); }
+/**
+ * @brief Sleep function wrapper.
+ * @param ms Sleep time in milliseconds.
+ */
 void ws_sleep(size_t ms) {
 	Sleep(ms);
 }
 #else
-
 void ws_lockMutex(ws_mutex_t* mut) { pthread_mutex_lock(mut); }
 void ws_unlockMutex(ws_mutex_t* mut) { pthread_mutex_unlock(mut); }
 ws_mutex_t* ws_createMutex() {
@@ -471,7 +516,13 @@ void ws_sleep(size_t ms) {
 #endif // _WIN32
 #endif // CUSTOM_THREADS
 
+/**
+ * @brief Gets the value stored by the atomic bool.
+ * @param ab Atomic bool object pointer.
+ * @return False if bool does not exist, otherwise the value contained by the bool.
+ */
 bool ws_getAtomicBool(ws_atomic_bool_t* ab) {
+	if (!ab) return false;
 	bool ret;
 	ws_lockMutex(ab->mut);
 	ret = ab->b;
@@ -479,12 +530,23 @@ bool ws_getAtomicBool(ws_atomic_bool_t* ab) {
 	return ret;
 }
 
+/**
+ * @brief Sets the value of the provided atomic bool.
+ * @param ab Atomic bool object.
+ * @param b Value to set the bool to.
+ */
 void ws_setAtomicBool(ws_atomic_bool_t* ab, bool b) {
+	if (!ab) return;
 	ws_lockMutex(ab->mut);
 	ab->b = b;
 	ws_unlockMutex(ab->mut);
 }
 
+/**
+ * @brief Creates an atomic bool.
+ * @param b Initial value held by the bool.
+ * @return NULL if it couldn't be created, pointer to the object otherwise.
+ */
 ws_atomic_bool_t* ws_createAtomicBool(bool b) {
 	ws_atomic_bool_t* ab = (ws_atomic_bool_t*) malloc(sizeof(ws_atomic_bool_t));
 	if (ab == NULL) return NULL;
@@ -493,6 +555,10 @@ ws_atomic_bool_t* ws_createAtomicBool(bool b) {
 	return ab;
 }
 
+/**
+ * @brief Destroys the provided atomic bool.
+ * @param ab Atomic bool to destroy.
+ */
 void ws_destroyAtomicBool(ws_atomic_bool_t* ab) {
 	ws_lockMutex(ab->mut);
 	ws_destroyMutex(ab->mut);
@@ -522,7 +588,10 @@ size_t thread_map_size = 0;
 size_t thread_map_current = 0;
 
 ws_mutex_t* thread_map_mut = NULL;
-
+/**
+ * @brief Sets the name of the calling thread. This will only be printed if threadID is true.
+ * @param name Name of the thread.
+ */
 void ws_setThreadName(char* name) {
 	if (!thread_map_mut) {
 		thread_map_mut = ws_createMutex();
@@ -551,6 +620,10 @@ void ws_setThreadName(char* name) {
 	ws_unlockMutex(thread_map_mut);
 }
 
+/**
+ * @brief Removes the name of the provided thread.
+ * @param name Name of the thread.
+ */
 void ws_removeThreadName(const char* name) {
 	if (!thread_map_mut) {
 		thread_map_mut = ws_createMutex();
@@ -596,10 +669,12 @@ exit:
 }
 
 bool printThreadID = true;
+/**
+ * @brief Set print threadID, which prints the threadID of function calling `ws_logger`. Defaults to on.
+ * @param b True to turn on, false to turn off.
+ */
 void ws_doPrintThreadID(bool b) { printThreadID = b; }
-
 #else
-	
 	#define LOCK_LOGGING_MUTEX
 	#define UNLOCK_LOGGING_MUTEX
 #endif
@@ -611,9 +686,8 @@ void ws_internal_logging_check() {
 	// Make sure we have an out stream.
 	if (!ws_out_stream) ws_setStream(WALLSHELL_OUTPUT, stdout);
 }
-	
-	
-	#define LOGGING_CHECK ws_internal_logging_check()
+
+#define LOGGING_CHECK ws_internal_logging_check()
 
 ws_color_t log_colors = {WS_FG_WHITE, WS_BG_DEFAULT};
 ws_color_t debug_colors = {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT};
@@ -752,6 +826,12 @@ void ws_vfatalf(const char* format, va_list args) {
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @brief vprintf style logging function.
+ * @param type Type of logging.
+ * @param format printf style formatting string.
+ * @param args va_list of arguments.
+ */
 void ws_vlogger(ws_logtype_t type, const char* format, va_list args) {
 	switch (type) {
 		case WS_LOG: {
@@ -784,6 +864,12 @@ void ws_vlogger(ws_logtype_t type, const char* format, va_list args) {
 	}
 }
 
+/**
+ * @brief Logger function for WallShell. Printf like formatting, automatically adds a newline.
+ * @param type Type of logging.
+ * @param format Printf style formatting string.
+ * @param ... Printf style formatting arguments.
+ */
 void ws_logger(ws_logtype_t type, const char* format, ...) {
 	va_list args;
 			va_start(args, format);
@@ -791,6 +877,12 @@ void ws_logger(ws_logtype_t type, const char* format, ...) {
 			va_end(args);
 }
 
+/**
+ * @brief Set the logger colors for the specified log type.
+ * @param type Type of logging.
+ * @param fg Foreground color.
+ * @param bg Background color.
+ */
 void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg) {
 	switch (type) {
 		case WS_LOG: {
@@ -829,13 +921,18 @@ void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg) {
 
 void ws_internal_cleanLogger() {
 #ifdef THREADED_SUPPORT
-	ws_destroyMutex(logging_mutex);
+	if (logging_mutex) ws_destroyMutex(logging_mutex);
+	if (thread_map_mut) ws_destroyMutex(thread_map_mut);
 	logging_mutex = NULL;
 	printThreadID = true;
-	for (int i = 0; i < thread_map_current; i++) {
-		free(thread_map[i].name);
+	if (thread_map) {
+		for (int i = 0; i < thread_map_current; i++) {
+			free(thread_map[i].name);
+		}
+		free(thread_map);
 	}
-	free(thread_map);
+	thread_map_size = 0;
+	thread_map_current = 0;
 	thread_map = NULL;
 #endif
 	log_colors = (ws_color_t) {WS_FG_WHITE, WS_BG_DEFAULT};
@@ -854,9 +951,46 @@ void ws_internal_cleanLogger() {
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 
+#ifdef DISABLE_MALLOC
+command_t commands[COMMAND_LIMIT];
+size_t command_size = COMMAND_LIMIT;
+#else
+ws_command_t* commands;
+size_t command_size = 0;
+#endif
+
+size_t current_command_spot = 0;
+
+char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
+size_t previous_commands_size;
+
+void ws_internal_cleanCommands() {
+#ifndef DISABLE_MALLOC
+	free(commands);
+	commands = NULL;
+	command_size = 0;
+#else
+	for (int i = 0; i < current_command_spot; i++){
+		commands[current_command_spot].commandName = NULL;
+		commands[current_command_spot].aliases = NULL;
+		commands[current_command_spot].aliases_count = 0;
+		commands[current_command_spot].helpCommand = NULL;
+		commands[current_command_spot].mainCommand = NULL;
+	}
+	command_size = COMMAND_LIMIT;
+#endif // DISABLE_MALLOC
+	current_command_spot = 0;
+	
+	for (int i = 0; i < PREVIOUS_BUF_SIZE; i++) {
+		memset(previousCommands, 0, MAX_COMMAND_BUF);
+	}
+	previous_commands_size = 0;
+}
+
 /**
  * @brief Register the command to the command handler.
  * @param c Command to be registered.
+ * @return Can return WALLSHELL_COMMAND_LIMIT_REACHED if DISABLE_MALLOC is defined, and WALLSHELL_OUT_OF_MEMORY if not.
  */
 ws_error_t ws_registerCommand(const ws_command_t c) {
 #ifdef DISABLE_MALLOC
@@ -895,19 +1029,27 @@ ws_error_t ws_registerCommand(const ws_command_t c) {
 	return WALLSHELL_NO_ERROR;
 }
 
-// TODO do this
+/**
+ * @brief Deregister the provided command.
+ * @param c Command to be deregistered. If it doesn't exist (not already registered), nothing happens.
+ */
 void ws_deregisterCommand(const ws_command_t c) {
-
-}
-
-int test(int argc, char** argv) {
-	fprintf(ws_out_stream, "ooga booga: %s\n", argv[0]);
-	for (int i = 0; i < argc; i++) {
-		fprintf(ws_out_stream, "\t%s\n", argv[i]);
+	for (int i = 0; i < current_command_spot; i++) {
+		if (ws_compareCommands(commands[i], c)) {
+			for (int j = i; j < current_command_spot - 1; j++) {
+				// Nothing is allocated through malloc. If something is, it's on the user to free it either before/after calling this.
+				commands[j].commandName = commands[j + 1].commandName;
+				commands[j].aliases = commands[j + 1].aliases;
+				commands[j].aliases_count = commands[j + 1].aliases_count;
+				commands[j].helpCommand = commands[j + 1].helpCommand;
+				commands[j].mainCommand = commands[j + 1].mainCommand;
+			}
+			return;
+		}
 	}
-	return -1;
 }
 
+/* Internal clear command */
 const char* clear_aliases[] = {"clr", "cls"};
 int clearHelp(int argc, char** argv) {
 	ws_help_entry_general_t entry = {
@@ -931,10 +1073,11 @@ int clearMain(int argc, char** argv) {
 	fprintf(ws_out_stream, "\033c");
 #endif
 	// Sometimes clearing the screen results in the colors getting reset.
-	updateColors();
+	ws_internal_updateColors();
 	return 0;
 }
 
+/* Internal help command */
 void helpSearch(char* str) {
 	ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
 	fprintf(ws_out_stream, "List of commands starting with \"%s\": (A) indicates an alias.\n", str);
@@ -954,7 +1097,6 @@ void helpSearch(char* str) {
 		ws_setConsoleColors(ws_getDefaultColors());
 	}
 }
-
 int helpHelp(int argc, char** argv) {
 	const char* optional[] = {
 			"-s <string> -> Lists all commands and aliases that start with <string>."
@@ -1064,6 +1206,7 @@ int helpMain(int argc, char** argv) {
 	return 0;
 }
 
+/* Internal history command */
 const char* history_aliases[] = {"hist"};
 int historyHelp(int argc, char** argv) {
 	ws_help_entry_general_t entry = {
@@ -1086,18 +1229,39 @@ int historyMain(int argc, char** argv) {
 	return 0;
 }
 
+#ifdef THREADED_SUPPORT
+ws_atomic_bool_t* exit_terminal = NULL;
+
+void ws_internal_checkExitBool() {
+	if (!exit_terminal) exit_terminal = ws_createAtomicBool(false);
+}
+	#define CHECK_EXIT_BOOL_EXISTS ws_internal_checkExitBool()
+	#define GET_EXIT_BOOL ws_getAtomicBool(exit_terminal)
+	#define SET_EXIT_BOOL(b) ws_setAtomicBool(exit_terminal, b)
+
+/**
+ * @brief Stops the currently running terminal. Only supported in threaded applications.
+ */
+void ws_stopTerminal() { SET_EXIT_BOOL(true); }
+#else
 bool exit_terminal = false;
+	#define CHECK_EXIT_BOOL_EXISTS
+	#define GET_EXIT_BOOL exit_terminal
+	#define SET_EXIT_BOOL(b) exit_terminal = b
+#endif
+
+/* Internal exit command */
 int exitMain(int argc, char** argv) {
 	if (argc > 1) {
 		if ((strcmp(argv[1], "-y") == 0 || strcmp(argv[1], "--yes") == 0)) {
-			exit_terminal = true;
+			SET_EXIT_BOOL(true);
 		} else {
 			ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
 			fprintf(ws_out_stream, "Unknown argument: %s\n", argv[1]);
 			ws_setConsoleColors(ws_getDefaultColors());
 		}
 	} else {
-		exit_terminal = ws_promptUser("Are you sure you want to exit?");
+		SET_EXIT_BOOL(ws_promptUser("Are you sure you want to exit?"));
 	}
 	printf("\n");
 	return 0;
@@ -1122,11 +1286,10 @@ int exitHelp(int argc, char** argv) {
 // We static define the aliases for basic commands.
 // We dont use malloc because we dont want to deal with having to free anything
 // WallShell wants just the pointers, cleaning it up is the user's responsibility
-void registerBasicCommands() {
+
+void ws_registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
-	ws_registerCommand((ws_command_t) {test, NULL, "test", NULL, 0});
-
 #ifndef NO_CLEAR_COMMAND
 	ws_registerCommand((ws_command_t) {clearMain, clearHelp, "clear", clear_aliases, 2});
 #endif // NO_CLEAR_COMMAND
@@ -1157,6 +1320,11 @@ typedef enum {
 } input_type_t;
 
 #ifndef CUSTOM_CURSOR_CONTROL
+/**
+ * @brief Move the cursor n times in the provided direction.
+ * @param direction Direction to move the cursor, using ws_cursor_t.
+ * @param n Amount of times to move in that direction.
+ */
 void ws_moveCursor_n(ws_cursor_t direction, size_t n) {
 	switch (direction) {
 		case WS_CURSOR_LEFT: {
@@ -1179,6 +1347,10 @@ void ws_moveCursor_n(ws_cursor_t direction, size_t n) {
 	}
 }
 
+/**
+ * @brief Moves the cursor once in the provided direction.
+ * @param direction Direction to move, using ws_cursor_t.
+ */
 void ws_moveCursor(ws_cursor_t direction) { ws_moveCursor_n(direction, 1); }
 #endif // CUSTOM_CURSOR_CONTROL
 
@@ -1187,7 +1359,7 @@ typedef struct {
 	uint64_t result;
 } input_result_t;
 
-input_result_t processVirtualSequence() {
+input_result_t ws_internal_processVirtualSequence() {
 	// The next character should be '[', and we can parse input until we know it should end with a certain character.
 	// For simplicity's sake we're just going to preallocate a buffer for the input
 	// If it doesn't end up being used it's not a big deal.
@@ -1235,7 +1407,7 @@ input_result_t processVirtualSequence() {
 	return result;
 }
 
-input_result_t processEO() {
+input_result_t ws_internal_processEO() {
 	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
 	int next = ws_get_char_blocking(ws_in_stream);;
 	input_result_t result = {NONE, 0};
@@ -1256,6 +1428,11 @@ input_result_t processEO() {
 // Execute command & Main
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
+/**
+ * @brief Execute a command with the provided buffer.
+ * @param commandBuf Buffer containing the command to execute, including any flags, parameters, etc.
+ * @return Can return WALLSHELL_OUT_OF_MEMORY if malloc returns NULL when DISABLE_MALLOC is not defined.
+ */
 ws_error_t ws_executeCommand(char* commandBuf) {
 #ifdef DISABLE_MALLOC
 	// Split the commandBuf into arguments based on spaces or other delimiters
@@ -1339,25 +1516,47 @@ cleanup:
 
 // Default prefix
 const char* prefix = "> ";
+/**
+ * @brief Set the prefix to the provided one.
+ * The prefix is what is displayed at the start of a command line.
+ * It is possible to use this function to imitate a bash like `user@name:path$`, or any other combination.
+ * @param newPrefix
+ */
 void ws_setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
 
 /**
- * @brief Cleans everything. Resets everything to it's default state, frees all allocations, etc.
+ * @brief Cleans everything.
+ * Resets everything to it's default state, frees all allocations, etc.
+ * Ideally you should call this before you exit, but the system garbage collector should clean it up.
+ * Don't rely on the system gc for critical applications.
  */
 void ws_cleanAll() {
-	// TODO clean streams, commands, history
 	prefix = "> ";
+	backspace_as_ascii_delete = false;
+#ifdef THREADED_SUPPORT
+	if (exit_terminal) ws_destroyAtomicBool(exit_terminal);
+	exit_terminal = NULL;
+#else
+	exit_terminal = false;
+#endif // THREADED_SUPPORT
+	ws_internal_cleanStreams();
+	ws_internal_cleanCommands();
 	ws_internal_cleanColors();
 #ifndef NO_LOGGING
 	ws_internal_cleanLogger();
 #endif // NO_LOGGING
+	ws_resetConsoleState();
 }
 
+/**
+ * @brief Main function for the terminal. Call after any configuration.
+ * @return Can return WALLSHELL_OUT_OF_MEMORY if DISABLE_MALLOC is not defined, and malloc returns NULL.
+ */
 ws_error_t ws_terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
 	/* We're also assuming the colors have been defined, even if they are blank. */
 #ifndef NO_BASIC_COMMANDS
-	registerBasicCommands();
+	ws_registerBasicCommands();
 #endif
 	
 	// Check for stream configurations
@@ -1370,7 +1569,7 @@ ws_error_t ws_terminalMain() {
 #endif // CUSTOM_WS_SETUP
 	
 	// Make sure the colors are set properly if they are defaults
-	updateColors();
+	ws_internal_updateColors();
 	
 	/* Ideally something should've caught this before calling main, but we still need to check. */
 #ifndef DISABLE_MALLOC
@@ -1388,7 +1587,7 @@ ws_error_t ws_terminalMain() {
 	
 	input_result_t input_result = {0, 0};
 	
-	while (!exit_terminal) {
+	while (!GET_EXIT_BOOL) {
 		if (newCommand) {
 			fprintf(ws_out_stream, "%s", prefix);
 			newCommand = false;
@@ -1593,12 +1792,12 @@ ws_error_t ws_terminalMain() {
 			// ctrl+d on unix, ctrl+z on windows
 			break;
 		} else if (current == '\033') {
-			input_result = processVirtualSequence();
+			input_result = ws_internal_processVirtualSequence();
 		} else if (current == 0xE0) {
 			// Microsoft sometimes wants to work with virtual inputs but usually doesn't.
 			// At the very least this makes porting it to an os very easy.
 			// All the OS has to do is give this program raw input in the form of scancodes for special keys.
-			input_result = processEO();
+			input_result = ws_internal_processEO();
 		} else {
 			
 			ws_internal_insert_c(commandBuf, MAX_COMMAND_BUF, (char) current, current_position);
@@ -1618,9 +1817,6 @@ ws_error_t ws_terminalMain() {
 		fflush(ws_out_stream);
 #endif
 	}
-#ifndef CUSTOM_WS_SETUP
-	resetConsoleState();
-#endif // CUSTOM_WS_SETUP
 	return WALLSHELL_NO_ERROR;
 }
 
@@ -1654,6 +1850,10 @@ bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2) {
  */
 void ws_setConsoleLocale() { SET_TERMINAL_LOCALE; }
 
+/**
+ * @brief Prints the general help entry.
+ * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
+ */
 void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
 	// Command Name
 	ws_setConsoleColors((ws_color_t) {WS_FG_RED, WS_BG_DEFAULT});
@@ -1692,6 +1892,10 @@ void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
 	fprintf(ws_out_stream, "\n");
 }
 
+/**
+ * @brief Prints the specific help entry.
+ * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
+ */
 void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
 	// Command Name
 	ws_setConsoleColors((ws_color_t) {WS_FG_RED, WS_BG_DEFAULT});
@@ -1730,7 +1934,12 @@ void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
 	fprintf(ws_out_stream, "\n");
 }
 
-#include <stdarg.h>
+/**
+ * @brief Prompts the user yes/no using the given prompt.
+ * @param format Printf style formatting string.
+ * @param ... Printf style arguments.
+ * @return True if the user reply's yes, false otherwise. Will return false if the user enters anything other than something starting with 'Y' or 'y'.
+ */
 bool ws_promptUser(const char* format, ...) {
 	va_list arg;
 			va_start(arg, format);

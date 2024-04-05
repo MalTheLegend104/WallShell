@@ -72,6 +72,8 @@ void ws_destroyAtomicBool(ws_atomic_bool_t* ab);
 
 void ws_sleep(size_t ms);
 
+void ws_stopTerminal();
+
 /* Thread names for logging */
 	#ifndef NO_WALLSHELL_LOGGING
 void ws_setThreadName(char* name);
@@ -234,6 +236,7 @@ void ws_printGeneralHelp(ws_help_entry_general_t* entry);
 void ws_printSpecificHelp(ws_help_entry_specific_t* entry);
 bool ws_promptUser(const char* format, ...);
 bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2);
+void ws_cleanAll();
 
 /* Logger */
 #ifndef NO_WALLSHELL_LOGGING
