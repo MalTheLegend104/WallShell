@@ -275,14 +275,16 @@ void ws_setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 #ifndef CUSTOM_WS_COLORS
-	#ifdef _WIN32
-		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
-	#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-		#define SET_TERMINAL_LOCALE
+	#ifndef SET_TERMINAL_LOCALE
+		#ifdef _WIN32
+			#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
+		#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+			#define SET_TERMINAL_LOCALE
+		#endif
 	#endif
 /* Modern windows is supposed to support these escape codes, older windows versions use SetConsoleTextAttribute */
 /* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
-	#define RESET_CONSOLE                   fprintf(ws_out_stream, "\033[0m")
+	#define RESET_CONSOLE fprintf(ws_out_stream, "\033[0m")
 
 void ws_internal_changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
 	if (fg == WS_FG_DEFAULT || bg == WS_BG_DEFAULT) {

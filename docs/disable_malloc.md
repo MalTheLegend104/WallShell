@@ -2,14 +2,28 @@
 
 This file lists a few nuances related to the `DISABLE_MALLOC` flag.
 
-### Char** MUST be declared outside of context.
+### Memory usage implications
 
-- You cannot declare *any* `char**` in context.
-  It will get destroyed when the function declaring them exits, causing a memory access violation when trying to access
-  them.
-  If you declare them ***outside*** the scope of a function, it will behave as expected.
-  > The exception to this is `help` commands. If you create `HelpEntry`'s inside the same scope that you print them,
-  they will behave properly. This mostly applies to aliases.
+Just because you disable malloc usage, *does not* mean that the application will use less memory.
+In fact, it's often the opposite.
+
+When you disable malloc, everything has to be statically defined.
+This includes things like the list that stores commands, command buffer size, etc.
+Often these get allocated more memory than they will use, something that does not happen when malloc is enabled.
+
+### Almost all char** MUST be declared outside of context.
+
+You cannot declare *any* `char**` in context.
+It will get destroyed when the function declaring them exits, causing a memory access violation when trying to access
+them.
+If you declare them ***outside*** the scope of a function, it will behave as expected.
+> The exception to this is `help` commands. If you create `HelpEntry`'s inside the same scope that you print them,
+> they will behave properly. This mostly applies to aliases.
+
+### Threaded support is not allowed when `DISABLE_MALLOC` is defined.
+
+Typical threaded systems have at least some sort of memory management.
+Threaded support requires the ability to allocate a few structures, namely mutex's and atomic bools.
 
 ## Example of a perfect setup
 
