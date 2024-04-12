@@ -4,16 +4,16 @@ WallShell, by default, provides a very simple implementation of a logger.
 
 ## Logging
 
-Every logger function requires a logtype. This is defined in the following enum:
+Every logger function requires a `logtype`. This is defined in the following enum:
 
 ```c
 typedef enum {
-	WS_LOG,
-	WS_DEBUG,
-	WS_INFO,
-	WS_WARN,
-	WS_ERROR,
-	WS_FATAL
+    WS_LOG,
+    WS_DEBUG,
+    WS_INFO,
+    WS_WARN,
+    WS_ERROR,
+    WS_FATAL
 } ws_logtype_t;
 ```
 
@@ -22,13 +22,17 @@ There are two main logging functions:
 ### `void ws_logger(ws_logtype_t type, const char* format, ...)`
 
 This function acts like a normal `printf` function.
-It takes the same type of `printf` format string, same args, etc.
+It takes the same type of `printf` format string, the same args, etc.
 
 ### `void ws_vlogger(ws_logtype_t type, const char* format, va_list args)`
 
-This function acts exactly the same as `vprintf`
+This function acts the same as `vprintf`.
 
-> Both logging function print a newline character after your format string.
+> Both logging functions print a newline character after your format string.
+
+### Output Stream
+
+It's important to note that the output stream for these is not necessarily `stdout`, it's whatever the current output stream is set to. If you never call `ws_setStream(WALLSHELL_OUTPUT, <stream>)`, it defaults to stdout, otherwise, it will print to whatever `WALLSHELL_OUTPUT` is set to.
 
 ## Changing Colors
 
@@ -38,7 +42,7 @@ If you so desire, you can change logger colors:
 void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg)
 ```
 
-It changes the colors for the corresponding logtype.
+It changes the colors for the corresponding `logtype`.
 It will remain this way until it is changed to something else.
 
 These are the default colors for each log type:
