@@ -80,9 +80,13 @@ _deps
 
 /.idea/
 /.github/
+/.vscode/
+/build/
 /cmake-build-debug/
 /cmake-build-debug-mingw/
 /cmake-build-debug-wsl/
 /cmake-build-release/
 /cmake-build-release-mingw/
 /cmake-build-release-wsl/
+
+/.html/

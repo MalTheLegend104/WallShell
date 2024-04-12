@@ -1,4 +1,4 @@
-#include "wall_shell.h"
+#include "../wall_shell.h"
 
 int main() {
 	// ws_setThreadName("Main");
@@ -9,7 +9,7 @@ int main() {
 	ws_logger(WS_WARN, "This is a warn message.");
 	ws_logger(WS_ERROR, "This is a error message.");
 	ws_logger(WS_FATAL, "This is a fatal message.");
-	
+
 	ws_setConsolePrefix("> ");
 	ws_setConsoleLocale();
 	ws_terminalMain();

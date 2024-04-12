@@ -1,5 +1,5 @@
-/** 
- * @file command_handler.h
+/**
+ * @file wall_shell.h
  * @author MalTheLegend104
  * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
  * @version v1.0
@@ -26,30 +26,30 @@
  * Check for user definitions
  *********************************************************************************/
 #ifndef PREVIOUS_BUF_SIZE
-	#define PREVIOUS_BUF_SIZE 50
+#define PREVIOUS_BUF_SIZE 50
 #endif // PREVIOUS_BUF_SIZE
 
 #ifndef MAX_COMMAND_BUF
-	#define MAX_COMMAND_BUF 256
+#define MAX_COMMAND_BUF 256
 #endif // MAX_COMMAND_BUF
 
 #ifdef THREADED_SUPPORT
-	#ifdef DISABLE_MALLOC
-		#error "Threaded support can't exist without malloc."
-	#endif
-	
-	#ifndef CUSTOM_THREADS
-		#ifdef _WIN32
+#ifdef DISABLE_MALLOC
+#error "Threaded support can't exist without malloc."
+#endif
+
+#ifndef CUSTOM_THREADS
+#ifdef _WIN32
 #include <Windows.h>
 typedef CRITICAL_SECTION ws_mutex_t;
 typedef DWORD ws_thread_id_t;
-		
-		#else
+
+#else
 #include <pthread.h>
 typedef pthread_mutex_t ws_mutex_t;
 typedef uint64_t ws_thread_id_t;
-		#endif // _WIN32
-	#endif
+#endif // _WIN32
+#endif
 /* Mutex */
 void ws_lockMutex(ws_mutex_t* mut);
 void ws_unlockMutex(ws_mutex_t* mut);
@@ -75,21 +75,21 @@ void ws_sleep(size_t ms);
 void ws_stopTerminal();
 
 /* Thread names for logging */
-	#ifndef NO_WALLSHELL_LOGGING
+#ifndef NO_WALLSHELL_LOGGING
 void ws_setThreadName(char* name);
 void ws_removeThreadName(const char* name);
 void ws_printThreadID();
 void ws_doPrintThreadID(bool b);
-	#endif // NO_WALLSHELL_LOGGING
+#endif // NO_WALLSHELL_LOGGING
 #endif // THREADED_SUPPORT
 
 #ifdef DISABLE_MALLOC
-	#ifndef COMMAND_LIMIT
-		#define COMMAND_LIMIT 25
-	#endif
-	#ifndef MAX_ARGS
-		#define MAX_ARGS 32
-	#endif
+#ifndef COMMAND_LIMIT
+#define COMMAND_LIMIT 25
+#endif
+#ifndef MAX_ARGS
+#define MAX_ARGS 32
+#endif
 #endif // DISABLE_MALLOC
 
 typedef enum {
@@ -105,8 +105,8 @@ typedef enum {
  * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
  */
 typedef struct {
-	int (* mainCommand)(int argc, char** argv);
-	int (* helpCommand)(int argc, char** argv);
+	int (*mainCommand)(int argc, char** argv);
+	int (*helpCommand)(int argc, char** argv);
 	const char* commandName;
 	const char** aliases;
 	size_t aliases_count;
@@ -152,7 +152,7 @@ typedef enum {
 	WS_FG_MAGENTA = 35,
 	WS_FG_CYAN = 36,
 	WS_FG_WHITE = 37,
-	
+
 	WS_FG_BRIGHT_BLACK = 90,
 	WS_FG_BRIGHT_RED = 91,
 	WS_FG_BRIGHT_GREEN = 92,
@@ -173,7 +173,7 @@ typedef enum {
 	WS_BG_MAGENTA = 45,
 	WS_BG_CYAN = 46,
 	WS_BG_WHITE = 47,
-	
+
 	WS_BG_BRIGHT_BLACK = 100,
 	WS_BG_BRIGHT_RED = 101,
 	WS_BG_BRIGHT_GREEN = 102,

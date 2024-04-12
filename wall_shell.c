@@ -1,5 +1,5 @@
-/** 
- * @file command_handler.h
+/**
+ * @file wall_shell.c
  * @author MalTheLegend104
  * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
  * @version v1.0
@@ -12,16 +12,16 @@
 // ------------------------------------------------------------------------------------------------
 #include "wall_shell.h"
 #ifdef _WIN32
-	#include <Windows.h>
+#include <Windows.h>
 #endif
 
 /* Disable unused parameter warnings. This only affects this file. */
 #ifdef __GNUC__
-	#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #elif defined(__clang__)
-	#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wunused-parameter"
 #elif defined(_MSC_VER)
-	#pragma warning(disable : 4100)
+#pragma warning(disable : 4100)
 #endif
 
 // Thank you  microsoft for making my life harder
@@ -38,6 +38,7 @@
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 /**
+ * @internal
  * @brief Internal function to concat a single char to the end of a string.
  * If the string is already at max length (including room for '\0') then the string is returned unchanged.
  *
@@ -49,18 +50,19 @@
 char* ws_internal_strcat_c(char* string, char c, size_t size) {
 	// Find the current length of the string
 	size_t current_length = strlen(string);
-	
+
 	// If adding something would make the string too long, we return unchanged
 	if (current_length + 1 >= size) return string;
-	
+
 	// Add the character to the end of the string
 	string[current_length] = c;
 	string[current_length + 1] = '\0';
-	
+
 	return string;
 }
 
 /**
+ * @internal
  * @brief Internal function to insert a single char into a string.
  * If the string is already at max length (including room for '\0') then the string is returned unchanged.
  *
@@ -73,12 +75,12 @@ char* ws_internal_strcat_c(char* string, char c, size_t size) {
 char* ws_internal_insert_c(char* string, size_t buf_size, char c, size_t position) {
 	size_t current_length = strlen(string);
 	if (current_length + 1 >= buf_size) return string;
-	
+
 	for (size_t i = current_length; i > position - 1; i--) {
 		string[i] = string[i - 1];
 	}
 	string[position - 1] = c;
-	
+
 	return string;
 }
 
@@ -128,6 +130,10 @@ void ws_initializeDefaultStreams() {
 	ws_setStream(WALLSHELL_OUTPUT, stdout);
 }
 
+/**
+ * @internal
+ * @brief Internal function to reset streams to their default state.
+ */
 void ws_internal_cleanStreams() {
 	ws_out_stream = NULL;
 	ws_err_stream = NULL;
@@ -135,7 +141,7 @@ void ws_internal_cleanStreams() {
 }
 
 #ifndef CLEAR_ROW
-	#define CLEAR_ROW fprintf(ws_out_stream, "\033[M");
+#define CLEAR_ROW fprintf(ws_out_stream, "\033[M");
 #endif // CLEAR_ROW
 
 // ------------------------------------------------------------------------------------------------
@@ -146,13 +152,13 @@ void ws_internal_cleanStreams() {
 // For some systems (mostly POSIX), backspace gets sent as ascii delete rather than \b
 bool backspace_as_ascii_delete = false;
 #ifndef CUSTOM_WS_SETUP
-	#ifndef _WIN32
-		#include <termios.h>
-		#include <unistd.h>
-		#include <sys/select.h>
-		#include <fcntl.h>
+#ifndef _WIN32
+#include <termios.h>
+#include <unistd.h>
+#include <sys/select.h>
+#include <fcntl.h>
 struct termios old_settings, new_settings;
-	#endif // _WIN32
+#endif // _WIN32
 /**
  * @brief Sets the console mode to the state that WallShell needs.
  * This includes enabling virtual terminal input/output, disabling input buffering, and disabling echo input.
@@ -163,18 +169,18 @@ ws_error_t setConsoleMode() {
 	// Set output mode to handle virtual terminal sequences
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (hOut == INVALID_HANDLE_VALUE) return WALLSHELL_WS_SETUP_ERROR;
-	
+
 	HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
 	if (hIn == INVALID_HANDLE_VALUE) return WALLSHELL_WS_SETUP_ERROR;
-	
+
 	DWORD dwOriginalOutMode = 0;
 	DWORD dwOriginalInMode = 0;
 	if (!GetConsoleMode(hOut, &dwOriginalOutMode)) return WALLSHELL_WS_SETUP_ERROR;
 	if (!GetConsoleMode(hIn, &dwOriginalInMode)) return WALLSHELL_WS_SETUP_ERROR;
-	
+
 	DWORD dwRequestedOutModes = ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
 	DWORD dwRequestedInModes = ENABLE_VIRTUAL_TERMINAL_INPUT;
-	
+
 	DWORD dwOutMode = dwOriginalOutMode | dwRequestedOutModes;
 	if (!SetConsoleMode(hOut, dwOutMode)) {
 		// we failed to set both modes, try to step down mode gracefully.
@@ -185,13 +191,13 @@ ws_error_t setConsoleMode() {
 			return WALLSHELL_WS_SETUP_ERROR;
 		}
 	}
-	
+
 	DWORD dwInMode = dwOriginalInMode | dwRequestedInModes;
 	if (!SetConsoleMode(hIn, dwInMode)) {
 		// Failed to set VT input mode, can't do anything here.
 		return WALLSHELL_WS_SETUP_ERROR;
 	}
-	
+
 	// Disable a few features that make a command handler hard to make
 	DWORD inMode = 0;
 	if (!GetConsoleMode(hIn, &inMode)) { return WALLSHELL_WS_SETUP_ERROR; }
@@ -205,7 +211,7 @@ ws_error_t setConsoleMode() {
 	tcgetattr(STDIN_FILENO, &old_settings);
 	new_settings = old_settings;
 	new_settings.c_lflag &= ~(ICANON | ECHO | IEXTEN);
-	
+
 	// posix terminals send ASCII delete instead of backspace for some godforsaken reason
 	backspace_as_ascii_delete = true;
 	tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
@@ -222,18 +228,24 @@ void ws_resetConsoleState() {
 	tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
 #endif // _WIN32
 }
-	
-	#ifdef _WIN32
-		#include <conio.h>
-		#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
-		#define ws_get_char_blocking(stream) _getch()
-	#else
-		#define PRINTING_NEEDS_FLUSH
-		#define SET_TERMINAL_LOCALE
-		#define ws_get_char_blocking(stream) getchar()
-	#endif // _WIN32
 
-int getCharNonBlocking() {
+#ifdef _WIN32
+#include <conio.h>
+#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
+#define ws_get_char_blocking(stream) _getch()
+#else
+#define PRINTING_NEEDS_FLUSH
+#define SET_TERMINAL_LOCALE
+#define ws_get_char_blocking(stream) getchar()
+#endif // _WIN32
+
+/**
+ * @internal
+ * @brief Non blocking version of getc().
+ *
+ * @return int Same as getc() and -2 if no new characters in the stream.
+ */
+int ws_internal_getCharNonBlocking() {
 #ifdef _WIN32
 	if (_kbhit()) {
 		return _getch();
@@ -244,9 +256,9 @@ int getCharNonBlocking() {
 	fd_set set;
 	FD_ZERO(&set);
 	FD_SET(STDIN_FILENO, &set);
-	struct timeval timeout = {0, 0}; // Immediate return
+	struct timeval timeout = { 0, 0 }; // Immediate return
 	int ready = select(STDIN_FILENO + 1, &set, NULL, NULL, &timeout);
-	
+
 	if (ready == -1) {
 		perror("select");
 		exit(EXIT_FAILURE);
@@ -257,14 +269,14 @@ int getCharNonBlocking() {
 	}
 #endif
 }
-	#define ws_get_char(stream) getCharNonBlocking()
+#define ws_get_char(stream) ws_internal_getCharNonBlocking()
 #endif // CUSTOM_WS_SETUP
 
 // To aid portability, we allow the user to set backspace_as_ascii_delete
 /**
- * @brief Some consoles send backspace as ASCII delete (0x7f) instead of '\b'.
+ * @brief Some consoles send backspace as ASCII delete (0x7f) instead of '\\b'.
  * If your system does this, set this to true. This only needs to be done if CUSTOM_WS_SETUP is defined.
- * POSIX and Windows based systems are automatically configured.
+ * For POSIX this is typically true, for Windows this is false.
  * @param b Bool to set backspace_as_ascii_delete to.
  */
 void ws_setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
@@ -275,22 +287,29 @@ void ws_setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 #ifndef CUSTOM_WS_COLORS
-	#ifndef SET_TERMINAL_LOCALE
-		#ifdef _WIN32
-			#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
-		#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-			#define SET_TERMINAL_LOCALE
-		#endif
-	#endif
+#ifndef SET_TERMINAL_LOCALE
+#ifdef _WIN32
+#define SET_TERMINAL_LOCALE    SetConsoleOutputCP(CP_UTF8)
+#elif defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+#define SET_TERMINAL_LOCALE
+#endif
+#endif
 /* Modern windows is supposed to support these escape codes, older windows versions use SetConsoleTextAttribute */
 /* https://stackoverflow.com/questions/4842424/list-of-ansi-color-escape-sequences */
-	#define RESET_CONSOLE fprintf(ws_out_stream, "\033[0m")
+#define RESET_CONSOLE fprintf(ws_out_stream, "\033[0m")
 
+/**
+ * @internal
+ * @brief Changes the console color using virtual terminal sequences.
+ *
+ * @param fg Foreground color
+ * @param bg Background color
+ */
 void ws_internal_changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
 	if (fg == WS_FG_DEFAULT || bg == WS_BG_DEFAULT) {
 		RESET_CONSOLE;
 	}
-	
+
 	if (fg == WS_FG_DEFAULT && bg != WS_BG_DEFAULT) {
 		fprintf(ws_out_stream, "\033[%dm", bg);
 	} else if (fg != WS_FG_DEFAULT && bg == WS_BG_DEFAULT) {
@@ -299,8 +318,8 @@ void ws_internal_changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg) {
 		fprintf(ws_out_stream, "\033[%d;%dm", fg, bg);
 	}
 }
-	
-	#define SET_WS_COLORS(a, b) ws_internal_changeConsoleColor(a, b);
+
+#define SET_WS_COLORS(a, b) ws_internal_changeConsoleColor(a, b);
 
 #endif // CUSTOM_WS_COLORS
 
@@ -315,18 +334,22 @@ void ws_internal_color_mutex_check() {
 	if (!color_mutex) color_mutex = ws_createMutex();
 	// We don't really care if it's NULL.
 }
-	#define COLOR_MUTEX_CHECK ws_internal_color_mutex_check()
-	#define LOCK_COLOR_MUTEX ws_lockMutex(color_mutex)
-	#define UNLOCK_COLOR_MUTEX ws_unlockMutex(color_mutex)
+#define COLOR_MUTEX_CHECK ws_internal_color_mutex_check()
+#define LOCK_COLOR_MUTEX ws_lockMutex(color_mutex)
+#define UNLOCK_COLOR_MUTEX ws_unlockMutex(color_mutex)
 
 #else
 #define COLOR_MUTEX_CHECK
 #define LOCK_COLOR_MUTEX
 #define UNLOCK_COLOR_MUTEX
 #endif
-ws_color_t default_colors = {WS_FG_DEFAULT, WS_BG_DEFAULT};
-ws_color_t current_colors = {WS_FG_DEFAULT, WS_BG_DEFAULT};
+ws_color_t default_colors = { WS_FG_DEFAULT, WS_BG_DEFAULT };
+ws_color_t current_colors = { WS_FG_DEFAULT, WS_BG_DEFAULT };
 
+/**
+ * @internal
+ * @brief Resets all color variables to their defualt state.
+ */
 void ws_internal_cleanColors() {
 #ifdef THREADED_SUPPORT
 	if (color_mutex) ws_destroyMutex(color_mutex);
@@ -338,6 +361,12 @@ void ws_internal_cleanColors() {
 	current_colors.background = WS_BG_DEFAULT;
 }
 
+/**
+ * @internal
+ * @brief Updates the current colors.
+ *
+ * @return ws_error_t WALLSHELL_OUT_STREAM_NOT_SET if the output stream hasn't been set yet. WALLSHELL_NO_ERROR otherwise.
+ */
 ws_error_t ws_internal_updateColors() {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
@@ -483,7 +512,15 @@ void ws_destroyMutex(ws_mutex_t* mut) {
  * @return ws_thread_id_t relating to the calling thread.
  */
 ws_thread_id_t ws_getThreadID() { return GetCurrentThreadId(); }
+
+/**
+ * @internal
+ * @brief Prints the threadID related to the calling thread.
+ *
+ * @param stream Output stream for fprintf.
+ */
 void ws_internal_printThreadID(FILE* stream) { fprintf(stream, "%lu", ws_getThreadID()); }
+
 /**
  * @brief Sleep function wrapper.
  * @param ms Sleep time in milliseconds.
@@ -492,27 +529,61 @@ void ws_sleep(size_t ms) {
 	Sleep(ms);
 }
 #else
+
+/**
+ * @brief Locks the provided mutex.
+ * @param mut Mutex to be locked.
+ */
 void ws_lockMutex(ws_mutex_t* mut) { pthread_mutex_lock(mut); }
+
+/**
+ * @brief Unlocks the provided mutex.
+ * @param mut Mutex to be unlocked.
+ */
 void ws_unlockMutex(ws_mutex_t* mut) { pthread_mutex_unlock(mut); }
+
+/**
+ * @brief Create a mutex.
+ * @return Pointer to a mutex object if successful, NULL otherwise.
+ */
 ws_mutex_t* ws_createMutex() {
 	ws_mutex_t* mut = (ws_mutex_t*) malloc(sizeof(ws_mutex_t));
 	if (mut == NULL) return NULL;
 	pthread_mutex_init(mut, NULL);
 	return mut;
 }
+
+/**
+ * @brief Destroys the provided mutex.
+ * @param mut mutex to be destroyed.
+ */
 void ws_destroyMutex(ws_mutex_t* mut) {
 	ws_lockMutex(mut);
 	pthread_mutex_destroy(mut);
 	free(mut);
 }
+/**
+ * @brief Gets the threadID of the calling thread.
+ * @return ws_thread_id_t relating to the calling thread.
+ */
 ws_thread_id_t ws_getThreadID() { return pthread_self(); }
+/**
+ * @internal
+ * @brief Prints the threadID related to the calling thread.
+ *
+ * @param stream Output stream for fprintf.
+ */
 void ws_internal_printThreadID(FILE* stream) { fprintf(stream, "%zu", ws_getThreadID()); }
 
+/**
+ * @brief Sleep function wrapper.
+ * @param ms Sleep time in milliseconds.
+ */
 void ws_sleep(size_t ms) {
 	struct timespec ts;
 	ts.tv_sec = ms / 1000;
 	ts.tv_nsec = (ms % 1000) * 1000000; // Convert remaining milliseconds to nanoseconds
-	
+
 	nanosleep(&ts, NULL);
 }
 #endif // _WIN32
@@ -577,8 +648,8 @@ void ws_destroyAtomicBool(ws_atomic_bool_t* ab) {
 #ifndef NO_WALLSHELL_LOGGING
 #ifdef THREADED_SUPPORT
 ws_mutex_t* logging_mutex = NULL;
-	#define LOCK_LOGGING_MUTEX ws_lockMutex(logging_mutex)
-	#define UNLOCK_LOGGING_MUTEX ws_unlockMutex(logging_mutex)
+#define LOCK_LOGGING_MUTEX ws_lockMutex(logging_mutex)
+#define UNLOCK_LOGGING_MUTEX ws_unlockMutex(logging_mutex)
 
 typedef struct {
 	char* name;
@@ -614,10 +685,10 @@ void ws_setThreadName(char* name) {
 	char* thread_name = calloc(strlen(name), sizeof(char));
 	if (!thread_name) return;
 	strcpy(thread_name, name);
-	
+
 	thread_map[thread_map_current].name = thread_name;
 	thread_map[thread_map_current].id = ws_getThreadID();
-	
+
 	thread_map_current++;
 	ws_unlockMutex(thread_map_mut);
 }
@@ -632,11 +703,11 @@ void ws_removeThreadName(const char* name) {
 		if (!thread_map_mut) return;
 	}
 	ws_lockMutex(thread_map_mut);
-	
+
 	if (!thread_map) return;
 	if (thread_map_current == 0) return;
 	if (thread_map_size == 0) return; // This should be impossible.
-	
+
 	for (int i = 0; i < thread_map_current; i++) {
 		if (strcmp(thread_map[thread_map_current].name, name) == 0) {
 			free(thread_map[thread_map_current].name);
@@ -648,10 +719,13 @@ void ws_removeThreadName(const char* name) {
 			return;
 		}
 	}
-	
+
 	ws_unlockMutex(thread_map_mut);
 }
 
+/**
+ * @brief Prints the threadID of the calling thread.
+ */
 void ws_printThreadID() {
 	if (!thread_map_mut) {
 		thread_map_mut = ws_createMutex();
@@ -677,10 +751,14 @@ bool printThreadID = true;
  */
 void ws_doPrintThreadID(bool b) { printThreadID = b; }
 #else
-	#define LOCK_LOGGING_MUTEX
-	#define UNLOCK_LOGGING_MUTEX
+#define LOCK_LOGGING_MUTEX
+#define UNLOCK_LOGGING_MUTEX
 #endif
 
+/**
+ * @internal
+ * @brief Checks the logging mutex and makes sure the output stream is set.
+ */
 void ws_internal_logging_check() {
 #ifdef THREADED_SUPPORT
 	if (!logging_mutex) logging_mutex = ws_createMutex(); // We don't really care if it's NULL.
@@ -691,13 +769,20 @@ void ws_internal_logging_check() {
 
 #define LOGGING_CHECK ws_internal_logging_check()
 
-ws_color_t log_colors = {WS_FG_WHITE, WS_BG_DEFAULT};
-ws_color_t debug_colors = {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT};
-ws_color_t info_colors = {WS_FG_BRIGHT_CYAN, WS_BG_DEFAULT};
-ws_color_t warn_colors = {WS_FG_BRIGHT_YELLOW, WS_BG_DEFAULT};
-ws_color_t error_colors = {WS_FG_BRIGHT_RED, WS_BG_DEFAULT};
-ws_color_t fatal_colors = {WS_FG_RED, WS_BG_DEFAULT};
+ws_color_t log_colors = { WS_FG_WHITE, WS_BG_DEFAULT };
+ws_color_t debug_colors = { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT };
+ws_color_t info_colors = { WS_FG_BRIGHT_CYAN, WS_BG_DEFAULT };
+ws_color_t warn_colors = { WS_FG_BRIGHT_YELLOW, WS_BG_DEFAULT };
+ws_color_t error_colors = { WS_FG_BRIGHT_RED, WS_BG_DEFAULT };
+ws_color_t fatal_colors = { WS_FG_RED, WS_BG_DEFAULT };
 
+/**
+ * @internal
+ * @brief Logger [LOG] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_vlogf(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -719,6 +804,13 @@ void ws_vlogf(const char* format, va_list args) {
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @internal
+ * @brief Logger [DEBUG] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_vdebugf(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -740,6 +832,13 @@ void ws_vdebugf(const char* format, va_list args) {
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @internal
+ * @brief Logger [INFO] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_vinfof(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -757,11 +856,18 @@ void ws_vinfof(const char* format, va_list args) {
 	fprintf(ws_out_stream, " ");
 	vfprintf(ws_out_stream, format, args);
 	fprintf(ws_out_stream, "\n");
-	
+
 	ws_setConsoleColors(current);
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @internal
+ * @brief Logger [WARN] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_vwarnf(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -779,11 +885,18 @@ void ws_vwarnf(const char* format, va_list args) {
 	fprintf(ws_out_stream, " ");
 	vfprintf(ws_out_stream, format, args);
 	fprintf(ws_out_stream, "\n");
-	
+
 	ws_setConsoleColors(current);
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @internal
+ * @brief Logger [ERROR] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_verrorf(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -801,11 +914,18 @@ void ws_verrorf(const char* format, va_list args) {
 	fprintf(ws_out_stream, " ");
 	vfprintf(ws_out_stream, format, args);
 	fprintf(ws_out_stream, "\n");
-	
+
 	ws_setConsoleColors(current);
 	UNLOCK_LOGGING_MUTEX;
 }
 
+/**
+ * @internal
+ * @brief Logger [FATAL] function
+ *
+ * @param format printf format string
+ * @param args vprintf va_list
+ */
 void ws_vfatalf(const char* format, va_list args) {
 	LOGGING_CHECK;
 	LOCK_LOGGING_MUTEX;
@@ -823,13 +943,13 @@ void ws_vfatalf(const char* format, va_list args) {
 	fprintf(ws_out_stream, " ");
 	vfprintf(ws_out_stream, format, args);
 	fprintf(ws_out_stream, "\n");
-	
+
 	ws_setConsoleColors(current);
 	UNLOCK_LOGGING_MUTEX;
 }
 
 /**
- * @brief vprintf style logging function.
+ * @brief Logger function for WallShell. vprintf like formatting, automatically adds a newline.
  * @param type Type of logging.
  * @param format printf style formatting string.
  * @param args va_list of arguments.
@@ -837,32 +957,32 @@ void ws_vfatalf(const char* format, va_list args) {
 void ws_vlogger(ws_logtype_t type, const char* format, va_list args) {
 	switch (type) {
 		case WS_LOG: {
-			ws_vlogf(format, args);
-			break;
-		}
+				ws_vlogf(format, args);
+				break;
+			}
 		case WS_DEBUG: {
-			ws_vdebugf(format, args);
-			break;
-		}
+				ws_vdebugf(format, args);
+				break;
+			}
 		case WS_INFO: {
-			ws_vinfof(format, args);
-			break;
-		}
+				ws_vinfof(format, args);
+				break;
+			}
 		case WS_WARN: {
-			ws_vwarnf(format, args);
-			break;
-		}
+				ws_vwarnf(format, args);
+				break;
+			}
 		case WS_ERROR: {
-			ws_verrorf(format, args);
-			break;
-		}
+				ws_verrorf(format, args);
+				break;
+			}
 		case WS_FATAL: {
-			ws_vfatalf(format, args);
-			break;
-		}
+				ws_vfatalf(format, args);
+				break;
+			}
 		default: {
-			vfprintf(ws_out_stream, format, args);
-		}
+				vfprintf(ws_out_stream, format, args);
+			}
 	}
 }
 
@@ -874,9 +994,9 @@ void ws_vlogger(ws_logtype_t type, const char* format, va_list args) {
  */
 void ws_logger(ws_logtype_t type, const char* format, ...) {
 	va_list args;
-			va_start(args, format);
+	va_start(args, format);
 	ws_vlogger(type, format, args);
-			va_end(args);
+	va_end(args);
 }
 
 /**
@@ -888,39 +1008,43 @@ void ws_logger(ws_logtype_t type, const char* format, ...) {
 void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg) {
 	switch (type) {
 		case WS_LOG: {
-			log_colors.foreground = fg;
-			log_colors.background = bg;
-			break;
-		}
+				log_colors.foreground = fg;
+				log_colors.background = bg;
+				break;
+			}
 		case WS_INFO: {
-			warn_colors.foreground = fg;
-			warn_colors.background = bg;
-			break;
-		}
+				warn_colors.foreground = fg;
+				warn_colors.background = bg;
+				break;
+			}
 		case WS_DEBUG: {
-			debug_colors.foreground = fg;
-			debug_colors.background = bg;
-			break;
-		}
+				debug_colors.foreground = fg;
+				debug_colors.background = bg;
+				break;
+			}
 		case WS_WARN: {
-			warn_colors.foreground = fg;
-			warn_colors.background = bg;
-			break;
-		}
+				warn_colors.foreground = fg;
+				warn_colors.background = bg;
+				break;
+			}
 		case WS_ERROR: {
-			error_colors.foreground = fg;
-			error_colors.background = bg;
-			break;
-		}
+				error_colors.foreground = fg;
+				error_colors.background = bg;
+				break;
+			}
 		case WS_FATAL: {
-			fatal_colors.foreground = fg;
-			fatal_colors.background = bg;
-			break;
-		}
+				fatal_colors.foreground = fg;
+				fatal_colors.background = bg;
+				break;
+			}
 		default: break;
 	}
 }
 
+/**
+ * @internal
+ * @brief Resets all logger variables. Resets color, mutex, etc.
+ */
 void ws_internal_cleanLogger() {
 #ifdef THREADED_SUPPORT
 	if (logging_mutex) ws_destroyMutex(logging_mutex);
@@ -937,12 +1061,12 @@ void ws_internal_cleanLogger() {
 	thread_map_current = 0;
 	thread_map = NULL;
 #endif
-	log_colors = (ws_color_t) {WS_FG_WHITE, WS_BG_DEFAULT};
-	debug_colors = (ws_color_t) {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT};
-	info_colors = (ws_color_t) {WS_FG_BRIGHT_CYAN, WS_BG_DEFAULT};
-	warn_colors = (ws_color_t) {WS_FG_BRIGHT_YELLOW, WS_BG_DEFAULT};
-	error_colors = (ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT};
-	fatal_colors = (ws_color_t) {WS_FG_RED, WS_BG_DEFAULT};
+	log_colors = (ws_color_t){ WS_FG_WHITE, WS_BG_DEFAULT };
+	debug_colors = (ws_color_t){ WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT };
+	info_colors = (ws_color_t){ WS_FG_BRIGHT_CYAN, WS_BG_DEFAULT };
+	warn_colors = (ws_color_t){ WS_FG_BRIGHT_YELLOW, WS_BG_DEFAULT };
+	error_colors = (ws_color_t){ WS_FG_BRIGHT_RED, WS_BG_DEFAULT };
+	fatal_colors = (ws_color_t){ WS_FG_RED, WS_BG_DEFAULT };
 }
 
 #endif // NO_WALLSHELL_LOGGING
@@ -966,13 +1090,17 @@ size_t current_command_spot = 0;
 char previousCommands[PREVIOUS_BUF_SIZE][MAX_COMMAND_BUF];
 size_t previous_commands_size;
 
+/**
+ * @internal
+ * @brief Resets all command variables. Resets command list, previousCommands, etc.
+ */
 void ws_internal_cleanCommands() {
 #ifndef DISABLE_MALLOC
 	free(commands);
 	commands = NULL;
 	command_size = 0;
 #else
-	for (int i = 0; i < current_command_spot; i++){
+	for (int i = 0; i < current_command_spot; i++) {
 		commands[current_command_spot].commandName = NULL;
 		commands[current_command_spot].aliases = NULL;
 		commands[current_command_spot].aliases_count = 0;
@@ -982,7 +1110,7 @@ void ws_internal_cleanCommands() {
 	command_size = COMMAND_LIMIT;
 #endif // DISABLE_MALLOC
 	current_command_spot = 0;
-	
+
 	for (int i = 0; i < PREVIOUS_BUF_SIZE; i++) {
 		memset(previousCommands, 0, MAX_COMMAND_BUF);
 	}
@@ -1052,7 +1180,11 @@ void ws_deregisterCommand(const ws_command_t c) {
 }
 
 /* Internal clear command */
-const char* clear_aliases[] = {"clr", "cls"};
+const char* clear_aliases[] = { "clr", "cls" };
+/**
+ * @internal
+ * @brief Clear function help command
+ */
 int clearHelp(int argc, char** argv) {
 	ws_help_entry_general_t entry = {
 			"Clear",
@@ -1065,6 +1197,11 @@ int clearHelp(int argc, char** argv) {
 	ws_printGeneralHelp(&entry);
 	return 0;
 }
+
+/**
+ * @internal
+ * @brief Clear function main command
+ */
 int clearMain(int argc, char** argv) {
 #ifdef _WIN32
 	// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
@@ -1080,16 +1217,20 @@ int clearMain(int argc, char** argv) {
 }
 
 /* Internal help command */
+/**
+ * @internal
+ * @brief Help function search command
+ */
 void helpSearch(char* str) {
-	ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "List of commands starting with \"%s\": (A) indicates an alias.\n", str);
 	ws_setConsoleColors(ws_getDefaultColors());
 	for (int i = 0; i < current_command_spot; i++) {
-		ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
 		if (commands[i].commandName && ws_internal_startsWith(commands[i].commandName, str)) {
 			fprintf(ws_out_stream, "\t%s\n", commands[i].commandName);
 		}
-		
+
 		// Check aliases for a match
 		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
 			if (commands[i].aliases[alias_idx] && ws_internal_startsWith(commands[i].aliases[alias_idx], str)) {
@@ -1099,6 +1240,11 @@ void helpSearch(char* str) {
 		ws_setConsoleColors(ws_getDefaultColors());
 	}
 }
+
+/**
+ * @internal
+ * @brief Help function help command
+ */
 int helpHelp(int argc, char** argv) {
 	const char* optional[] = {
 			"-s <string> -> Lists all commands and aliases that start with <string>."
@@ -1114,6 +1260,11 @@ int helpHelp(int argc, char** argv) {
 	ws_printSpecificHelp(&entry);
 	return 0;
 }
+
+/**
+ * @internal
+ * @brief Help function main command
+ */
 int helpMain(int argc, char** argv) {
 	// Make sure there's more than one argument.
 	if (argc > 1) {
@@ -1123,14 +1274,14 @@ int helpMain(int argc, char** argv) {
 			argv[i - 1] = argv[i];
 		}
 		argv[argc - 1] = NULL;
-		
+
 		// Update the size of the array
 		argc--;
 		// Check for more args
 		if (argc >= 1) {
 			if ((strcmp(argv[0], "-s") == 0) || (strcmp(argv[0], "-search") == 0)) {
 				if (argc == 1) {
-					ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "Search flag must be followed by an argument.\n");
 				} else {
 					helpSearch(argv[1]);
@@ -1138,46 +1289,46 @@ int helpMain(int argc, char** argv) {
 				}
 			}
 		}
-		
+
 		// Find the command
 		for (int i = 0; i < current_command_spot; i++) {
 			// Check the normal command name
 			if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
 				// No help function for command.
 				if (!commands[i].helpCommand) {
-					ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
 					ws_setConsoleColors(ws_getDefaultColors());
 					return 0;
 				}
-				
+
 				// Execute the help command associated with the matched command
 				int result = commands[i].helpCommand(argc, argv);
 				if (result != 0) {
 					// If the command function returns a non-zero value, it may indicate an error
-					ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "Command exited with code: %d\n", result);
 					ws_setConsoleColors(ws_getDefaultColors());
 				}
 				return 0;
 			}
-			
+
 			// Check aliases for a match
 			for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
 				if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
 					// No help function for command.
 					if (!commands[i].helpCommand) {
-						ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+						ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 						fprintf(ws_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
 						ws_setConsoleColors(ws_getDefaultColors());
 						return 0;
 					}
-					
+
 					// Execute the help command associated with the matched alias
 					int result = commands[i].helpCommand(argc, argv);
 					if (result != 0) {
 						// If the command function returns a non-zero value, it may indicate an error
-						ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+						ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 						fprintf(ws_out_stream, "Command exited with code: %d\n", result);
 						ws_setConsoleColors(ws_getDefaultColors());
 					}
@@ -1186,16 +1337,16 @@ int helpMain(int argc, char** argv) {
 			}
 		}
 		// If the command is not found in the registered commands or their aliases
-		ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "Help command not found for: %s\n", argv[0]);
 	} else {
 		fprintf(ws_out_stream, "\n");
-		ws_setConsoleColors((ws_color_t) {WS_FG_CYAN, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "To get more info about a command, run `help <command_name>`\n");
-		ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "All commands:\n");
-		
-		ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT});
+
+		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
 		// List all available commands
 		for (int i = 0; i < current_command_spot; i++) {
 			if (commands[i].commandName) {
@@ -1209,7 +1360,11 @@ int helpMain(int argc, char** argv) {
 }
 
 /* Internal history command */
-const char* history_aliases[] = {"hist"};
+const char* history_aliases[] = { "hist" };
+/**
+ * @internal
+ * @brief History function help command
+ */
 int historyHelp(int argc, char** argv) {
 	ws_help_entry_general_t entry = {
 			"History",
@@ -1222,8 +1377,13 @@ int historyHelp(int argc, char** argv) {
 	ws_printGeneralHelp(&entry);
 	return 0;
 }
+
+/**
+ * @internal
+ * @brief History function main command
+ */
 int historyMain(int argc, char** argv) {
-	ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 	for (size_t i = 0; i < previous_commands_size; i++) {
 		fprintf(ws_out_stream, "%s\n", previousCommands[i]);
 	}
@@ -1234,12 +1394,16 @@ int historyMain(int argc, char** argv) {
 #ifdef THREADED_SUPPORT
 ws_atomic_bool_t* exit_terminal = NULL;
 
+/**
+ * @internal
+ * @brief Checks exit bool, makes sure it exists.
+ */
 void ws_internal_checkExitBool() {
 	if (!exit_terminal) exit_terminal = ws_createAtomicBool(false);
 }
-	#define CHECK_EXIT_BOOL_EXISTS ws_internal_checkExitBool()
-	#define GET_EXIT_BOOL ws_getAtomicBool(exit_terminal)
-	#define SET_EXIT_BOOL(b) ws_setAtomicBool(exit_terminal, b)
+#define CHECK_EXIT_BOOL_EXISTS ws_internal_checkExitBool()
+#define GET_EXIT_BOOL ws_getAtomicBool(exit_terminal)
+#define SET_EXIT_BOOL(b) ws_setAtomicBool(exit_terminal, b)
 
 /**
  * @brief Stops the currently running terminal. Only supported in threaded applications.
@@ -1247,27 +1411,16 @@ void ws_internal_checkExitBool() {
 void ws_stopTerminal() { SET_EXIT_BOOL(true); }
 #else
 bool exit_terminal = false;
-	#define CHECK_EXIT_BOOL_EXISTS
-	#define GET_EXIT_BOOL exit_terminal
-	#define SET_EXIT_BOOL(b) exit_terminal = b
+#define CHECK_EXIT_BOOL_EXISTS
+#define GET_EXIT_BOOL exit_terminal
+#define SET_EXIT_BOOL(b) exit_terminal = b
 #endif
 
 /* Internal exit command */
-int exitMain(int argc, char** argv) {
-	if (argc > 1) {
-		if ((strcmp(argv[1], "-y") == 0 || strcmp(argv[1], "--yes") == 0)) {
-			SET_EXIT_BOOL(true);
-		} else {
-			ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
-			fprintf(ws_out_stream, "Unknown argument: %s\n", argv[1]);
-			ws_setConsoleColors(ws_getDefaultColors());
-		}
-	} else {
-		SET_EXIT_BOOL(ws_promptUser("Are you sure you want to exit?"));
-	}
-	printf("\n");
-	return 0;
-}
+/**
+ * @internal
+ * @brief Exit function help command
+ */
 int exitHelp(int argc, char** argv) {
 	const char* optional[] = {
 			"--yes",
@@ -1285,27 +1438,52 @@ int exitHelp(int argc, char** argv) {
 	return 0;
 }
 
-// We static define the aliases for basic commands.
-// We dont use malloc because we dont want to deal with having to free anything
-// WallShell wants just the pointers, cleaning it up is the user's responsibility
+/**
+ * @internal
+ * @brief Exit function main command
+ */
+int exitMain(int argc, char** argv) {
+	if (argc > 1) {
+		if ((strcmp(argv[1], "-y") == 0 || strcmp(argv[1], "--yes") == 0)) {
+			SET_EXIT_BOOL(true);
+		} else {
+			ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
+			fprintf(ws_out_stream, "Unknown argument: %s\n", argv[1]);
+			ws_setConsoleColors(ws_getDefaultColors());
+		}
+	} else {
+		SET_EXIT_BOOL(ws_promptUser("Are you sure you want to exit?"));
+	}
+	printf("\n");
+	return 0;
+}
 
-void ws_registerBasicCommands() {
+/**
+ * @internal
+ * @brief Registers all base commands.
+ */
+void ws_internal_registerBasicCommands() {
+	// We static define the aliases for basic commands.
+	// We dont use malloc because we dont want to deal with having to free anything
+	// It also would be way messier for DISABLE_MALLOC if we did allocate things.
+	// WallShell wants just the pointers, cleaning it up is the user's responsibility
+
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 #ifndef NO_CLEAR_COMMAND
-	ws_registerCommand((ws_command_t) {clearMain, clearHelp, "clear", clear_aliases, 2});
+	ws_registerCommand((ws_command_t) { clearMain, clearHelp, "clear", clear_aliases, 2 });
 #endif // NO_CLEAR_COMMAND
 
 #ifndef NO_HELP_COMMAND
-	ws_registerCommand((ws_command_t) {helpMain, helpHelp, "help", NULL, 0});
+	ws_registerCommand((ws_command_t) { helpMain, helpHelp, "help", NULL, 0 });
 #endif // NO_HELP_COMMAND
 
 #ifndef NO_HISTORY_COMMAND
-	ws_registerCommand((ws_command_t) {historyMain, historyHelp, "history", history_aliases, 1});
+	ws_registerCommand((ws_command_t) { historyMain, historyHelp, "history", history_aliases, 1 });
 #endif // NO_HISTORY_COMMAND
 
 #ifndef NO_EXIT_COMMAND
-	ws_registerCommand((ws_command_t) {exitMain, exitHelp, "exit", NULL, 0});
+	ws_registerCommand((ws_command_t) { exitMain, exitHelp, "exit", NULL, 0 });
 #endif // NO_EXIT_COMMAND
 }
 
@@ -1330,21 +1508,21 @@ typedef enum {
 void ws_moveCursor_n(ws_cursor_t direction, size_t n) {
 	switch (direction) {
 		case WS_CURSOR_LEFT: {
-			fprintf(ws_out_stream, "\033[%zuD", n);
-			break;
-		}
+				fprintf(ws_out_stream, "\033[%zuD", n);
+				break;
+			}
 		case WS_CURSOR_RIGHT: {
-			fprintf(ws_out_stream, "\033[%zuC", n);
-			break;
-		}
+				fprintf(ws_out_stream, "\033[%zuC", n);
+				break;
+			}
 		case WS_CURSOR_UP: {
-			fprintf(ws_out_stream, "\033[%zuA", n);
-			break;
-		}
+				fprintf(ws_out_stream, "\033[%zuA", n);
+				break;
+			}
 		case WS_CURSOR_DOWN: {
-			fprintf(ws_out_stream, "\033[%zuB", n);
-			break;
-		}
+				fprintf(ws_out_stream, "\033[%zuB", n);
+				break;
+			}
 		default: break;
 	}
 }
@@ -1361,20 +1539,26 @@ typedef struct {
 	uint64_t result;
 } input_result_t;
 
+/**
+ * @internal
+ * @brief Processes a virtual terminal sequence
+ *
+ * @return input_result_t The type of input that the sequence was.
+ */
 input_result_t ws_internal_processVirtualSequence() {
 	// The next character should be '[', and we can parse input until we know it should end with a certain character.
 	// For simplicity's sake we're just going to preallocate a buffer for the input
 	// If it doesn't end up being used it's not a big deal.
-	input_result_t result = {NONE, 0};
+	input_result_t result = { NONE, 0 };
 	int next = ws_get_char_blocking(ws_in_stream);
 	if (next != '[' && next != 'O') {
 		fprintf(ws_out_stream, "%c", next);
 		return result;
 	}
-	
+
 	char seq[10];
 	int i = 0;
-	
+
 	// Read until we encounter a non-numeric character
 	next = ws_get_char_blocking(ws_in_stream);
 	while (next >= '0' && next <= '9' || next == ';') {
@@ -1382,7 +1566,7 @@ input_result_t ws_internal_processVirtualSequence() {
 		next = ws_get_char_blocking(ws_in_stream);
 	}
 	seq[i] = '\0';
-	
+
 	// Handle the end character of the escape sequence
 	switch (next) {
 		case 'A': result.type = CURSOR;
@@ -1409,10 +1593,16 @@ input_result_t ws_internal_processVirtualSequence() {
 	return result;
 }
 
+/**
+ * @internal
+ * @brief Process E0 keys. This is mostly for arrow keys in custom OS's and Windows.
+ *
+ * @return input_result_t
+ */
 input_result_t ws_internal_processEO() {
 	// Up: 0x48 -> Down: 0x50 -> Right: 0x4d -> Left: 0x4b
 	int next = ws_get_char_blocking(ws_in_stream);;
-	input_result_t result = {NONE, 0};
+	input_result_t result = { NONE, 0 };
 	switch (next) {
 		case WS_CURSOR_UP:
 		case WS_CURSOR_DOWN:
@@ -1454,7 +1644,7 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 	int argc = 0;
 	char** argv = NULL;
 	char* current = strtok(commandBuf, " ");
-	
+
 	while (current != NULL) {
 		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
 		if (!newptr) {
@@ -1486,26 +1676,26 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 			int result = commands[i].mainCommand(argc, argv);
 			if (result != 0) {
 				// If the command function returns a non-zero value, it may indicate an error
-				ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+				ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 				fprintf(ws_out_stream, "Command exited with code: %d\n", result);
 			}
 			goto cleanup;
 		}
-		
+
 		// Check that commands alias
 		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
 			if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
 				int result = commands[i].mainCommand(argc, argv);
 				if (result != 0) {
 					// If the command function returns a non-zero value, it may indicate an error
-					ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "Command exited with code: %d\n", result);
 				}
 				goto cleanup;
 			}
 		}
 	}
-	ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "Command not found: \"%s\"\n", argv[0]);
 cleanup:
 #ifndef DISABLE_MALLOC
@@ -1558,9 +1748,9 @@ ws_error_t ws_terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
 	/* We're also assuming the colors have been defined, even if they are blank. */
 #ifndef NO_BASIC_COMMANDS
-	ws_registerBasicCommands();
+	ws_internal_registerBasicCommands();
 #endif
-	
+
 	// Check for stream configurations
 	if (!ws_err_stream) ws_setStream(WALLSHELL_ERROR, stderr);
 	if (!ws_out_stream) ws_setStream(WALLSHELL_OUTPUT, stdout);
@@ -1569,10 +1759,10 @@ ws_error_t ws_terminalMain() {
 #ifndef CUSTOM_WS_SETUP
 	setConsoleMode();
 #endif // CUSTOM_WS_SETUP
-	
+
 	// Make sure the colors are set properly if they are defaults
 	ws_internal_updateColors();
-	
+
 	/* Ideally something should've caught this before calling main, but we still need to check. */
 #ifndef DISABLE_MALLOC
 	if (!commands) commands = malloc(sizeof(ws_command_t));
@@ -1580,15 +1770,15 @@ ws_error_t ws_terminalMain() {
 #endif
 	bool newCommand = true;
 	bool tabPressed = false; // allows for autocompletion
-	
+
 	size_t position_in_previous = 0;
 	size_t current_position = 1;
-	
+
 	char commandBuf[MAX_COMMAND_BUF];
 	char oldCommand[MAX_COMMAND_BUF];
-	
-	input_result_t input_result = {0, 0};
-	
+
+	input_result_t input_result = { 0, 0 };
+
 	while (!GET_EXIT_BOOL) {
 		if (newCommand) {
 			fprintf(ws_out_stream, "%s", prefix);
@@ -1602,57 +1792,57 @@ ws_error_t ws_terminalMain() {
 			fflush(ws_out_stream);
 #endif
 		}
-		
+
 		// Check for the previous input results
 		if (input_result.type != NONE) {
 			if (input_result.type == CURSOR) {
 				switch (input_result.result) {
 					case WS_CURSOR_UP: {
-						CLEAR_ROW;
-						if (position_in_previous == 0) {
-							memset(oldCommand, 0, MAX_COMMAND_BUF);
-							memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
-						}
-						memset(commandBuf, 0, MAX_COMMAND_BUF);
-						memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
-						fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
-						if (previous_commands_size > 0 && position_in_previous < previous_commands_size - 1) {
-							position_in_previous++;
-						}
-						input_result.type = NONE;
-						current_position = 1;
-						continue;
-					}
-					case WS_CURSOR_DOWN: {
-						CLEAR_ROW;
-						if (previous_commands_size == 1 && position_in_previous == 1) position_in_previous--;
-						if (position_in_previous > 0) {
-							position_in_previous--;
+							CLEAR_ROW;
+							if (position_in_previous == 0) {
+								memset(oldCommand, 0, MAX_COMMAND_BUF);
+								memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
+							}
 							memset(commandBuf, 0, MAX_COMMAND_BUF);
 							memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
-						} else {
-							memset(commandBuf, 0, MAX_COMMAND_BUF);
-							memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
+							fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+							if (previous_commands_size > 0 && position_in_previous < previous_commands_size - 1) {
+								position_in_previous++;
+							}
+							input_result.type = NONE;
+							current_position = 1;
+							continue;
 						}
-						fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
-						current_position = 1;
-						input_result.type = NONE;
-						continue;
-					}
+					case WS_CURSOR_DOWN: {
+							CLEAR_ROW;
+							if (previous_commands_size == 1 && position_in_previous == 1) position_in_previous--;
+							if (position_in_previous > 0) {
+								position_in_previous--;
+								memset(commandBuf, 0, MAX_COMMAND_BUF);
+								memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
+							} else {
+								memset(commandBuf, 0, MAX_COMMAND_BUF);
+								memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
+							}
+							fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+							current_position = 1;
+							input_result.type = NONE;
+							continue;
+						}
 					case WS_CURSOR_RIGHT: {
-						if (current_position == (strlen(commandBuf) + 1)) break;
-						current_position++;
-						ws_moveCursor(WS_CURSOR_RIGHT);
-						input_result.type = NONE;
-						continue;
-					}
+							if (current_position == (strlen(commandBuf) + 1)) break;
+							current_position++;
+							ws_moveCursor(WS_CURSOR_RIGHT);
+							input_result.type = NONE;
+							continue;
+						}
 					case WS_CURSOR_LEFT: {
-						if (current_position == 1) break;
-						current_position--;
-						ws_moveCursor(WS_CURSOR_LEFT);
-						input_result.type = NONE;
-						continue;
-					}
+							if (current_position == 1) break;
+							current_position--;
+							ws_moveCursor(WS_CURSOR_LEFT);
+							input_result.type = NONE;
+							continue;
+						}
 					default: break;
 				}
 			}
@@ -1660,14 +1850,14 @@ ws_error_t ws_terminalMain() {
 			fflush(ws_out_stream);
 #endif
 		}
-		
+
 		int current = ws_get_char(ws_in_stream);
-		
+
 		if (current == -2) {
 			ws_sleep(10);
 			continue;
 		}
-		
+
 		if (backspace_as_ascii_delete && current == 0x7f)
 			current = '\b';
 		if (current == '\n' || current == '\r') {
@@ -1677,7 +1867,7 @@ ws_error_t ws_terminalMain() {
 				newCommand = true;
 				continue;
 			}
-			
+
 			// Move everything right in the previous buf
 			if (previous_commands_size > 0) {
 				if (strcmp(previousCommands[0], commandBuf) != 0) {
@@ -1685,7 +1875,7 @@ ws_error_t ws_terminalMain() {
 						memcpy(previousCommands[i], previousCommands[i - 1], strlen(previousCommands[i - 1]));
 						memset(previousCommands[i - 1], 0, MAX_COMMAND_BUF);
 					}
-					
+
 					if (previous_commands_size < PREVIOUS_BUF_SIZE) {
 						previous_commands_size++;
 					}
@@ -1709,7 +1899,7 @@ ws_error_t ws_terminalMain() {
 				// Ensure it's null terminated.
 				// In theory, it should already be, but I'd rather do this unnecessary step than have an overflow or messed up buffer.
 				commandBuf[len - 1] = '\0';
-				
+
 				current_position--;
 				if (current_position != (strlen(commandBuf) + 1)) {
 					CLEAR_ROW;
@@ -1730,12 +1920,12 @@ ws_error_t ws_terminalMain() {
 			const char* list[50]; // List of current possible commands
 			int list_size = 0;
 			for (int i = 0; i < command_size; i++) {
-				ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT});
+				ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
 				if (commands[i].commandName && ws_internal_startsWith(commands[i].commandName, commandBuf)) {
 					list[list_size] = commands[i].commandName;
 					list_size++;
 				}
-				
+
 				// Check aliases for a match
 				for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
 					if (commands[i].aliases[alias_idx] && ws_internal_startsWith(commands[i].aliases[alias_idx], commandBuf)) {
@@ -1755,7 +1945,7 @@ ws_error_t ws_terminalMain() {
 				}
 				ws_setConsoleColors(ws_getDefaultColors());
 			}
-			
+
 			if (list_size == 1) {
 				// Print the rest of the command
 				size_t len = strlen(commandBuf);
@@ -1767,7 +1957,7 @@ ws_error_t ws_terminalMain() {
 				tabPressed = false;
 			} else if (tabPressed) {
 				if (list_size == 0) {
-					ws_setConsoleColors((ws_color_t) {WS_FG_BRIGHT_RED, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "\nNo command starting with: %s\n", commandBuf);
 					// Clear the buffer
 					memset(commandBuf, 0, MAX_COMMAND_BUF * sizeof(char));
@@ -1775,7 +1965,7 @@ ws_error_t ws_terminalMain() {
 					newCommand = true;
 				} else if (list_size > 1) {
 					// Print out all commands
-					ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+					ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "\n");
 					for (int i = 0; i < list_size; i++) {
 						fprintf(ws_out_stream, "%s\n", list[i]);
@@ -1801,7 +1991,7 @@ ws_error_t ws_terminalMain() {
 			// All the OS has to do is give this program raw input in the form of scancodes for special keys.
 			input_result = ws_internal_processEO();
 		} else {
-			
+
 			ws_internal_insert_c(commandBuf, MAX_COMMAND_BUF, (char) current, current_position);
 			if (current_position != strlen(commandBuf)) {
 				CLEAR_ROW;
@@ -1858,39 +2048,39 @@ void ws_setConsoleLocale() { SET_TERMINAL_LOCALE; }
  */
 void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
 	// Command Name
-	ws_setConsoleColors((ws_color_t) {WS_FG_RED, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_RED, WS_BG_DEFAULT });
 	if (entry->commandName)
 		fprintf(ws_out_stream, "\n%s\n", entry->commandName);
-	
+
 	// Description
-	ws_setConsoleColors((ws_color_t) {WS_FG_CYAN, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
 	if (entry->description)
 		fprintf(ws_out_stream, "%s\n", entry->description);
-	
+
 	// Commands
 	if (entry->commands_count > 0) {
-		ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "\nCommands:\n");
-		
-		ws_setConsoleColors((ws_color_t) {WS_FG_GREEN, WS_BG_DEFAULT});
+
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
 		for (int i = 0; i < entry->commands_count; i++) {
 			if (entry->commands[i])
 				fprintf(ws_out_stream, "  %s\n", entry->commands[i]);
 		}
 	}
-	
+
 	// Aliases
 	if (entry->aliases_count > 0) {
-		ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "\nAliases:\n");
-		
-		ws_setConsoleColors((ws_color_t) {WS_FG_GREEN, WS_BG_DEFAULT});
+
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
 		for (int i = 0; i < entry->aliases_count; i++) {
 			if (entry->aliases[i])
 				fprintf(ws_out_stream, "  %s\n", entry->aliases[i]);
 		}
 	}
-	ws_setConsoleColors((ws_color_t) {WS_FG_DEFAULT, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_DEFAULT, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "\n");
 }
 
@@ -1900,39 +2090,39 @@ void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
  */
 void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
 	// Command Name
-	ws_setConsoleColors((ws_color_t) {WS_FG_RED, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_RED, WS_BG_DEFAULT });
 	if (entry->commandName)
 		fprintf(ws_out_stream, "\n%s\n", entry->commandName);
-	
+
 	// Description
-	ws_setConsoleColors((ws_color_t) {WS_FG_CYAN, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
 	if (entry->description)
 		fprintf(ws_out_stream, "%s\n", entry->description);
-	
+
 	// Commands
 	if (entry->required_count > 0) {
-		ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "Required:\n");
-		
-		ws_setConsoleColors((ws_color_t) {WS_FG_GREEN, WS_BG_DEFAULT});
+
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
 		for (int i = 0; i < entry->required_count; i++) {
 			if (entry->required[i])
 				fprintf(ws_out_stream, "  %s\n", entry->required[i]);
 		}
 	}
-	
+
 	// Aliases
 	if (entry->optional_count > 0) {
-		ws_setConsoleColors((ws_color_t) {WS_FG_YELLOW, WS_BG_DEFAULT});
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 		fprintf(ws_out_stream, "\nOptional:\n");
-		
-		ws_setConsoleColors((ws_color_t) {WS_FG_GREEN, WS_BG_DEFAULT});
+
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
 		for (int i = 0; i < entry->optional_count; i++) {
 			if (entry->optional[i])
 				fprintf(ws_out_stream, "  %s\n", entry->optional[i]);
 		}
 	}
-	ws_setConsoleColors((ws_color_t) {WS_FG_DEFAULT, WS_BG_DEFAULT});
+	ws_setConsoleColors((ws_color_t) { WS_FG_DEFAULT, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "\n");
 }
 
@@ -1944,10 +2134,10 @@ void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
  */
 bool ws_promptUser(const char* format, ...) {
 	va_list arg;
-			va_start(arg, format);
+	va_start(arg, format);
 	vfprintf(ws_out_stream, format, arg);
-			va_end(arg);
-	
+	va_end(arg);
+
 	fprintf(ws_out_stream, " [Y/n] ");
 	int first_input;
 	do {
