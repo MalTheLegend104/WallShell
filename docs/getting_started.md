@@ -13,4 +13,5 @@ Voilà! You're ready to use WallShell in your project.
 
 - Check out [configuration options](options.md) to see how to customize WallShell to your requirements.
 - Look at the [in-depth example](../main.c) to see how WallShell can be integrated and used in practice.
+- It's highly advised for everyone to read [things to note](things_to_note.md) after the above two.
 - If you're implementing WallShell in a freestanding environment, ensure you understand the [standard library requirements](standard.md).
