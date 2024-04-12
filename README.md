@@ -24,7 +24,9 @@ Some example use cases:
     - Can act as a stopgap before you fully implement a GUI.
       - It allows for quick prototyping, testing, etc., allowing you to see if an idea works before committing to writing a full GUI.
 
-There are plenty of ways to use WallShell. WallShell provides many great cross-platform wrappers around things like cursor control and console colors.
+### In General
+
+WallShell provides many great cross-platform wrappers around things like cursor control and console colors.
 You can use however much (or little) of WallShell as you want. It's highly adaptable to any potential use cases.
 
 The sky's the limit. You define the commands that are run and what they do. WallShell only needs a function pointer.
