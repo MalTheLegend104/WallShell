@@ -2,11 +2,9 @@
 
 This file contains a list of things that are important to take note of when using WallShell.
 
-### C99 and C11
+### C99
 
-The entire core of WallShell is written with strict ISO C99 adherence in mind.
-C11 is *only* required for threads.
-`<thread.h>` and `<stdatomic.h>` are the only C11 features used, and are not used by default.
+The entire core of WallShell is written with strict ISO C99 adherence in mind. It uses your systems implementation of threads and console control.
 
 ## Note on Streams
 
