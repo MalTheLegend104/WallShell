@@ -1,6 +1,6 @@
 # Custom Setup
 
-You should only consider doing this if you are on a non-standard system that isn't Windows or unix based.
+You should only consider doing this if you are on a non-standard system that isn't Windows or Unix based.
 
 There are several things that need to be defined:
 
