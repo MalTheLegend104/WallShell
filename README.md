@@ -8,21 +8,20 @@ An easy-to-use, highly portable, CLI using C99.
 
 A big focus of WallShell was to create an easily portable shell for freestanding environments.
 With proper configuration, WallShell only requires a very minimal portion of the standard library.
-This is great for embedded systems, hobby operating systems, and any other low level application.
+This is great for embedded systems, hobby operating systems, and any other low-level application.
 
 ### Large Scale Projects
 
-Customizations make WallShell applicable to large scale applications as well.
+Customizations make WallShell applicable to large-scale applications as well.
 Some example use cases:
 
 - Simple Debug Console for Development
-  - Can easily run alongside a full scale GUI and be used to configure application state, configurations, monitoring
+  - Can easily run alongside a full-scale GUI and be used to configure application state, configurations, monitoring
       internal tasks, etc.
 - Frontend for Backend Applications
   - Can act as a frontend interface for managing and monitoring the application's internal state, configurations, and
-      performing administrative tasks, all without the burden of creating a full scale GUI.
-  - Can act as a stopgap before you fully implement a GUI.
-    - It allows for quick prototyping, testing, etc., allowing you to see if an idea works before committing to writing a full GUI.
+      performing administrative tasks, all without the burden of creating a full-scale GUI.
+  - It allows for quick prototyping, testing, etc., allowing you to see if an idea works before committing to writing a full GUI.
 
 ### In General
 
@@ -49,7 +48,7 @@ You may be wondering what's up with the name. Where did "Wall" come from? And is
 - The "Wall"
   - When coming up with a name for the project, I looked up from my computer screen and saw a wall. It was supposed to be temporary, but it grew on me.
 - Is it really a "shell"?
-  - That depends on how you implement it. It can act as a normal CLI, or be built into an OS to make a fully featured shell.
+  - That depends on how you implement it. It can act as a normal CLI, or be built into an OS to make a fully-featured shell.
   - It sits between a terminal and an application, and, in my mind, that's close enough to what a shell does to be called that.
 
 ## License
