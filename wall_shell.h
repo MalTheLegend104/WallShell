@@ -3,6 +3,20 @@
  * @author MalTheLegend104
  * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
  * @version v1.0
+ * @copyright
+ * Copyright 2024 MalTheLegend104
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 #ifndef COMMAND_HANDLER_H
@@ -41,12 +55,28 @@
 #ifndef CUSTOM_THREADS
 #ifdef _WIN32
 #include <Windows.h>
+/**
+ * @brief Wrapper around your system's mutex type.
+ * @note `CRITICAL_SECTION` is replaced with your systems mutex type.
+ */
 typedef CRITICAL_SECTION ws_mutex_t;
+/**
+ * @brief Wrapper around your system's thread handle.
+ * @note `DWORD` is replaced with your systems thread handle type.
+ */
 typedef DWORD ws_thread_id_t;
 
 #else
 #include <pthread.h>
+/**
+ * @brief Wrapper around your system's mutex type.
+ * @note `pthread_mutex_t` is replaced with your systems mutex type.
+ */
 typedef pthread_mutex_t ws_mutex_t;
+/**
+ * @brief Wrapper around your system's thread hadnle.
+ * @note `uint64_t` is replaced with your systems thread handle type.
+ */
 typedef uint64_t ws_thread_id_t;
 #endif // _WIN32
 #endif
@@ -92,18 +122,20 @@ void ws_doPrintThreadID(bool b);
 #endif
 #endif // DISABLE_MALLOC
 
+/**
+ * @brief All potential error returns by WallShell functions.
+ *
+ * All returns should be descriptive enough to understand what they mean.
+ * Any function that can return a value from this enum will describe what it has the possiblity of returning and why.
+ */
 typedef enum {
 	WALLSHELL_NO_ERROR = 0,
 	WALLSHELL_OUT_OF_MEMORY,
 	WALLSHELL_COMMAND_LIMIT_REACHED,
 	WALLSHELL_OUT_STREAM_NOT_SET,
-	WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT,
 	WALLSHELL_WS_SETUP_ERROR
 } ws_error_t;
 
-/**
- * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
- */
 typedef struct {
 	int (*mainCommand)(int argc, char** argv);
 	int (*helpCommand)(int argc, char** argv);
@@ -112,12 +144,6 @@ typedef struct {
 	size_t aliases_count;
 } ws_command_t;
 
-/**
- * @brief General help structure. Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as NULL to not print them.
- *
- * This is meant for general command help entries, mostly meaning first level commands (like clear, exit, etc.)
- */
 typedef struct {
 	const char* commandName;
 	const char* description;
@@ -127,12 +153,6 @@ typedef struct {
 	const int aliases_count;
 } ws_help_entry_general_t;
 
-/**
- * @brief Specific help structure. Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as NULL to not print them.
- *
- * This is meant for things like subcommands, flags, etc.
- */
 typedef struct {
 	const char* commandName;
 	const char* description;
@@ -142,6 +162,19 @@ typedef struct {
 	const int optional_count;
 } ws_help_entry_specific_t;
 
+/**
+ * @brief All built in foreground colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_FG_MAGENTA` is a darker shade of purple, while `WS_FG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_FG_YELLOW` is typically a shade or orange, while `WS_FG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ */
 typedef enum {
 	WS_FG_DEFAULT = 0,
 	WS_FG_BLACK = 30,
@@ -163,6 +196,25 @@ typedef enum {
 	WS_FG_BRIGHT_WHITE = 97,
 } ws_fg_color_t;
 
+/**
+ * @brief All built in background colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_BG_MAGENTA` is a darker shade of purple, while `WS_BG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_BG_YELLOW` is typically a shade or orange, while `WS_BG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ *
+ * @warning Background colors are highly dependent on the terminal being used.
+ * It's advised to use `WS_BG_DEFAULT` if you don't explicity need a background color.
+ * Some terminals have transparency that will be messed up by other color backgrounds.
+ * It's also important to note that not every terminal will fill the background when a newline character is used,
+ *  or for spaces not followed by another character.
+ */
 typedef enum {
 	WS_BG_DEFAULT = 0,
 	WS_BG_BLACK = 40,
@@ -200,15 +252,28 @@ ws_error_t ws_setBackgroundColor(ws_bg_color_t color);
 ws_error_t ws_setConsoleColors(ws_color_t colors);
 
 /* Stream configurations. */
+/**
+ * @brief Simple enum relating to stream types that WallShell uses.
+ *
+ * Mostly used exclusively in @ref ws_setStream().
+ */
 typedef enum {
-	WALLSHELL_INPUT,
-	WALLSHELL_OUTPUT,
-	WALLSHELL_ERROR
+	WALLSHELL_INPUT,  /* Input stream. Defaults to stdin. */
+	WALLSHELL_OUTPUT, /* Ouput stream. Defaults to stdout. */
+	WALLSHELL_ERROR   /* Error stream. Defaults to stderr. */
 } ws_stream;
 
 void ws_setStream(ws_stream type, FILE* stream);
 
 /* Cursors */
+/**
+ * @brief Cursor directions.
+ *
+ * These are internal cursor directions.
+ * The values they are assigned are related to their scancodes.
+ *
+ * @note For input using scancodes and not virtual terminal sequences, WallShell expects the `E0` scancode before these.
+ */
 typedef enum {
 	WS_CURSOR_LEFT = 0x4b,
 	WS_CURSOR_RIGHT = 0x4d,
@@ -240,6 +305,12 @@ void ws_cleanAll();
 
 /* Logger */
 #ifndef NO_WALLSHELL_LOGGING
+/**
+ * @brief Logging types.
+ *
+ * These are meant to be used in conjunction with all logger functions.
+ * The logtype determines what will be printed out.
+ */
 typedef enum {
 	WS_LOG,
 	WS_DEBUG,
