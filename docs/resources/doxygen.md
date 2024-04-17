@@ -8,4 +8,4 @@ If you intended to find the source code, you can find that [here](https://github
 
 ## License
 
-This project is licensed under the [Apache License Version 2.0](../LICENSE.md)
+This project is licensed under the [Apache License Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)

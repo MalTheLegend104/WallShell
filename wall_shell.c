@@ -1,7 +1,10 @@
 /**
  * @file wall_shell.c
  * @author MalTheLegend104
- * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
+ * @brief Main source file for WallShell.
+ *
+ * C99 compliant command handler. Meant to be easily portable and highly configurable.
+ *
  * @version v1.0
  * @copyright
  * Copyright 2024 MalTheLegend104

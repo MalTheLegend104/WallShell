@@ -1,6 +1,6 @@
 # WallShell
 
-[![GitHub License](https://img.shields.io/github/license/MalTheLegend104/WallShell)](./LICENSE.md)
+[![GitHub License](https://img.shields.io/github/license/MalTheLegend104/WallShell)](https://www.apache.org/licenses/LICENSE-2.0)
 ![Build Workflow Status](https://img.shields.io/github/actions/workflow/status/MalTheLegend104/WallShell/build-test.yml)
 [![Current Release](https://img.shields.io/github/v/release/MalTheLegend104/WallShell)](https://https://github.com/MalTheLegend104/WallShell/releases/latest)
 ![Commits since latest release](https://img.shields.io/github/commits-since/MalTheLegend104/WallShell/latest)
