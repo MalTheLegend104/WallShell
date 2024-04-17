@@ -1,6 +1,21 @@
 # WallShell
 
+[![GitHub License](https://img.shields.io/github/license/MalTheLegend104/WallShell)](./LICENSE.md)
+![Build Workflow Status](https://img.shields.io/github/actions/workflow/status/MalTheLegend104/WallShell/build-test.yml)
+[![Current Release](https://img.shields.io/github/v/release/MalTheLegend104/WallShell)](https://https://github.com/MalTheLegend104/WallShell/releases/latest)
+![Commits since latest release](https://img.shields.io/github/commits-since/MalTheLegend104/WallShell/latest)
+
 An easy-to-use, highly portable, CLI using C99.
+
+## Table of Contents
+
+- [Portability and Use Cases](#portability-and-use-cases)
+  - [Freestanding Environments](#freestanding-environments)
+  - [Large Scale Projects](#large-scale-projects)
+  - [General Uses](#in-general)
+- [Usage](#usage)
+- [The Name](#the-name)
+- [License](#license)
 
 ## Portability and Use Cases
 
@@ -17,10 +32,10 @@ Some example use cases:
 
 - Simple Debug Console for Development
   - Can easily run alongside a full-scale GUI and be used to configure application state, configurations, monitoring
-      internal tasks, etc.
+    internal tasks, etc.
 - Frontend for Backend Applications
   - Can act as a frontend interface for managing and monitoring the application's internal state, configurations, and
-      performing administrative tasks, all without the burden of creating a full-scale GUI.
+    performing administrative tasks, all without the burden of creating a full-scale GUI.
   - It allows for quick prototyping, testing, etc., allowing you to see if an idea works before committing to writing a full GUI.
 
 ### In General
@@ -34,12 +49,13 @@ The sky's the limit. You define the commands that are run and what they do. Wall
 
 This list below lists everywhere you can find information about using WallShell in your own projects.
 
-- All functions (save for a few internal ones) are documented using doxygen comments.
 - [Getting Started](docs/getting_started.md)
 - [General Purpose Docs](docs/README.md)
 - [In-Depth Example](examples/main.c)
 - [FAQ](docs/FAQ.md)
 - [Contribution Guide](docs/contributing.md)
+- All functions (save for a few internal ones) are documented using doxygen comments.
+  - The doxygen documentation can be generated yourself or found [here](http://malthelegend104.github.io/WallShell).
 
 ## The Name
 
@@ -53,4 +69,16 @@ You may be wondering what's up with the name. Where did "Wall" come from? And is
 
 ## License
 
-(insert typical license stuff here)
+Copyright 2024 [MalTheLegend104](https://github.com/MalTheLegend104/)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

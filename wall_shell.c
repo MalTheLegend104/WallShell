@@ -187,13 +187,14 @@ bool backspace_as_ascii_delete = false;
 struct termios old_settings, new_settings;
 #endif // _WIN32
 /**
+ * @internal
  * @brief Sets the console mode to the state that WallShell needs.
  *
  * This includes enabling virtual terminal input/output, disabling input buffering, and disabling echo input.
  *
  * @return WALLSHELL_WS_SETUP_ERROR if unsuccessful, WALLSHELL_NO_ERROR otherwise.
  */
-ws_error_t setConsoleMode() {
+ws_error_t ws_internal_setConsoleMode() {
 #ifdef _WIN32
 	// Set output mode to handle virtual terminal sequences
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -1791,7 +1792,7 @@ ws_error_t ws_terminalMain() {
 	if (!ws_in_stream) ws_setStream(WALLSHELL_INPUT, stdin);
 
 #ifndef CUSTOM_WS_SETUP
-	setConsoleMode();
+	ws_internal_setConsoleMode();
 #endif // CUSTOM_WS_SETUP
 
 	// Make sure the colors are set properly if they are defaults
@@ -2336,4 +2337,73 @@ bool ws_promptUser(const char* format, ...) {
  *
  * @var ws_atomic_bool_t::mut
  * @brief Pointer to the mutex the bool uses. This should never be accessed directly.
+ */
+
+/**
+ * @property ws_fg_color_t
+ * @brief All built in foreground colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_FG_MAGENTA` is a darker shade of purple, while `WS_FG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_FG_YELLOW` is typically a shade or orange, while `WS_FG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ */
+
+/**
+ * @property ws_error_t
+ * @brief All potential error returns by WallShell functions.
+ *
+ * All returns should be descriptive enough to understand what they mean.
+ * Any function that can return a value from this enum will describe what it has the possiblity of returning and why.
+ */
+
+/**
+ * @property ws_bg_color_t
+ * @brief All built in background colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_BG_MAGENTA` is a darker shade of purple, while `WS_BG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_BG_YELLOW` is typically a shade or orange, while `WS_BG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ *
+ * @warning Background colors are highly dependent on the terminal being used.
+ * It's advised to use `WS_BG_DEFAULT` if you don't explicity need a background color.
+ * Some terminals have transparency that will be messed up by other color backgrounds.
+ * It's also important to note that not every terminal will fill the background when a newline character is used,
+ *  or for spaces not followed by another character.
+ */
+
+/**
+ * @property ws_stream
+ * @brief Simple enum relating to stream types that WallShell uses.
+ *
+ * Mostly used exclusively in @ref ws_setStream().
+ */
+
+/**
+ * @property ws_cursor_t
+ * @brief Cursor directions.
+ *
+ * These are internal cursor directions.
+ * The values they are assigned are related to their scancodes.
+ *
+ * @note For input using scancodes and not virtual terminal sequences, WallShell expects the `E0` scancode before these.
+ */
+
+/**
+ * @property ws_logtype_t
+ * @brief Logging types.
+ *
+ * These are meant to be used in conjunction with all logger functions.
+ * The logtype determines what will be printed out.
  */
