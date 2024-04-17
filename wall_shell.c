@@ -1,8 +1,25 @@
 /**
  * @file wall_shell.c
  * @author MalTheLegend104
- * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
+ * @brief Main source file for WallShell.
+ *
+ * C99 compliant command handler. Meant to be easily portable and highly configurable.
+ *
  * @version v1.0
+ * @copyright
+ * Copyright 2024 MalTheLegend104
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 // ------------------------------------------------------------------------------------------------
@@ -84,8 +101,21 @@ char* ws_internal_insert_c(char* string, size_t buf_size, char c, size_t positio
 	return string;
 }
 
+/**
+ * @internal
+ * @brief Checks if a string starts with another string.
+ *
+ * As far as I know, there is nothing in libc to do this, although I might've just overlooked something.
+ * Regardless, this is a pretty simple function, just a little bit of pointer magic.
+ * It's an internal function, but you can easily use it using either extern or adding the declaration to `wallshell_config.h`.
+ *
+ * @param str String to check
+ * @param prefix Thing to check that the other starts with.
+ * @return true If the string starts with prefix.
+ * @return false If the string does not start with prefix.
+ */
 bool ws_internal_startsWith(const char* str, const char* prefix) {
-	while (*prefix) {
+	while (*prefix && *str) {
 		if (*prefix != *str) {
 			return false;
 		}
@@ -160,11 +190,14 @@ bool backspace_as_ascii_delete = false;
 struct termios old_settings, new_settings;
 #endif // _WIN32
 /**
+ * @internal
  * @brief Sets the console mode to the state that WallShell needs.
+ *
  * This includes enabling virtual terminal input/output, disabling input buffering, and disabling echo input.
+ *
  * @return WALLSHELL_WS_SETUP_ERROR if unsuccessful, WALLSHELL_NO_ERROR otherwise.
  */
-ws_error_t setConsoleMode() {
+ws_error_t ws_internal_setConsoleMode() {
 #ifdef _WIN32
 	// Set output mode to handle virtual terminal sequences
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -275,8 +308,10 @@ int ws_internal_getCharNonBlocking() {
 // To aid portability, we allow the user to set backspace_as_ascii_delete
 /**
  * @brief Some consoles send backspace as ASCII delete (0x7f) instead of '\\b'.
+ *
  * If your system does this, set this to true. This only needs to be done if CUSTOM_WS_SETUP is defined.
  * For POSIX this is typically true, for Windows this is false.
+ *
  * @param b Bool to set backspace_as_ascii_delete to.
  */
 void ws_setAsciiDeleteAsBackspace(bool b) { backspace_as_ascii_delete = b; }
@@ -1710,14 +1745,17 @@ cleanup:
 const char* prefix = "> ";
 /**
  * @brief Set the prefix to the provided one.
+ *
  * The prefix is what is displayed at the start of a command line.
  * It is possible to use this function to imitate a bash like `user@name:path$`, or any other combination.
+ *
  * @param newPrefix
  */
 void ws_setConsolePrefix(const char* newPrefix) { prefix = newPrefix; }
 
 /**
  * @brief Cleans everything.
+ *
  * Resets everything to it's default state, frees all allocations, etc.
  * Ideally you should call this before you exit, but the system garbage collector should clean it up.
  * Don't rely on the system gc for critical applications.
@@ -1757,7 +1795,7 @@ ws_error_t ws_terminalMain() {
 	if (!ws_in_stream) ws_setStream(WALLSHELL_INPUT, stdin);
 
 #ifndef CUSTOM_WS_SETUP
-	setConsoleMode();
+	ws_internal_setConsoleMode();
 #endif // CUSTOM_WS_SETUP
 
 	// Make sure the colors are set properly if they are defaults
@@ -2036,6 +2074,7 @@ bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2) {
 
 /**
  * @brief Sets the console locale. This is only required on Windows systems, as terminals default to ASCII.
+ *
  * The built in SET_TERMINAL_LOCALE sets the Windows terminal to UTF8.
  * Can be potentially be used on unix systems to configure locale, although this isn't done by default.
  * If the system you are implementing requires locale configuration, redefine SET_TERMINAL_LOCALE to the needed configuration.
@@ -2043,6 +2082,7 @@ bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2) {
 void ws_setConsoleLocale() { SET_TERMINAL_LOCALE; }
 
 /**
+ * @anchor general help
  * @brief Prints the general help entry.
  * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
  */
@@ -2087,6 +2127,7 @@ void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
 /**
  * @brief Prints the specific help entry.
  * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
+ * @anchor specific_help
  */
 void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
 	// Command Name
@@ -2155,3 +2196,217 @@ bool ws_promptUser(const char* format, ...) {
 	if (first_input == 'Y' || first_input == 'y') return true;
 	return false;
 }
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// The bottom of this file is to document things for Doxygen that aren't necessarily able to be
+// documeneted elsewhere, or are otherwise messy to do so. This includes things like structs, 
+// typedefs, unions, etc. Anything that isn't documented in place should be done so here. 
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+/**
+ * @struct ws_command_t wall_shell.h
+ * @brief Command Data Structure
+ *
+ * This structure holds all data related to the command. There are two required entires, `mainCommand` and `commandName`.
+ * The rest of the structures are optional, and if they are unused should be set to `NULL`, `nullptr`, or `0` respectively.
+ *
+ * @var ws_command_t::mainCommand
+ * @brief Main function of the command. This is called when your command is written in terminal.
+ *
+ * Should be a pointer to a C style main function.
+ * This means it needs to be in the form `int func(int argc, char** argv);`
+ * If you are using this in C++, you will have to mark it `extern "c"`, and may have to do some trickery if it's part of a class.
+ * `argc` and `argv` work identically to those in the C-standard.
+ * The return code is displayed to terminal if it isn't 0.
+ *
+ * @var ws_command_t::helpCommand
+ * @brief Help function of the command. This is not required. This is called when `help <command>` is called.
+ *
+ * Should be a pointer to a C style main function.
+ * This means it needs to be in the form `int func(int argc, char** argv);`
+ * If you are using this in C++, you will have to mark it `extern "C"`, and may have to do some trickery if it's part of a class.
+ * `argc` and `argv` work identically to those in the C-standard.
+ * The return code is displayed to terminal if it isn't 0.
+ *
+ * @var ws_command_t::commandName
+ * @brief Name of the command. This is what the user has to type into the terminal to run your command.
+ *
+ * @var ws_command_t::aliases
+ * @brief Any aliases you want your command to have. When typed, these call your command as if they are the normal Command Name.
+ * @warning Make sure to not declare this in context.
+ * If declared in context, and that scope is exited, WallShell will be trying to read non-existent entries, likely causing a segfault.
+ * Create this array using malloc (or calloc) if available, or declare it in a global scope.
+ *
+ * @var ws_command_t::aliases_count
+ * @brief Amount of aliases in your alias array.
+ *
+ * This should act like strlen, it's the count, not the indexes.
+ * If this number is inaccurate, WallShell will either not read all you entries (if count is too small) or create a buffer overflow (and likely a segfault).
+ */
+
+/**
+ * @struct ws_help_entry_general_t wall_shell.h
+ * @brief General help structure.
+ *
+ * Makes printing help menu entries consistent across different functions.
+ * Not all fields have to be filled in. You can leave fields as `NULL` to not print them.
+ * This is meant for general command help entries, mostly meaning first level commands (like clear, exit, etc.)
+ *
+ * This is often used to define "Categories".
+ * Say you have several time functions.
+ * Each one could set it's help function to the same thing, which in turn prints this structure listing out all `time` commands.
+ * You can also use it to show sub-commands in a similar way.
+ * Using git as an example, you could have `help git` print this structure,
+ * while listing things like `git branch` under the commands part of this struct.
+ *
+ * Meant to be used with @ref ws_printGeneralHelp().
+ *
+ * @var ws_help_entry_general_t::commandName
+ * @brief Name of the command.
+ *
+ * @var ws_help_entry_general_t::description
+ * @brief Description of the command.
+ *
+ * @var ws_help_entry_general_t::commands
+ * @brief Commands that are a subset of this command/topic.
+ *
+ * @var ws_help_entry_general_t::commands_count
+ * @brief Amount of commands in the `commands` part of this structure. It's the count, not the indexes.
+ *
+ * @var ws_help_entry_general_t::aliases
+ * @brief Any aliases that this command has.
+ * @note It's generally a good idea to use the same `aliases` array that you used when creating the @ref ws_command_t related to this command.
+ *
+ * @var ws_help_entry_general_t::aliases_count
+ * @brief Amount of commands in the `aliases` part of this structure. It's the count, not the indexes.
+ */
+
+/**
+ * @struct ws_help_entry_specific_t wall_shell.h
+ * Specific help structure. Makes printing help menu entries consistent across different functions.
+ * Not all fields have to be filled in. You can leave fields as NULL to not print them.
+ *
+ * This is meant for things like subcommands, flags, etc.
+ *
+ * Meant to be used with @ref ws_printSpecificHelp().
+ *
+ * @var ws_help_entry_specific_t::commandName
+ * @brief Name of the command.
+ *
+ * @var ws_help_entry_specific_t::description
+ * @brief Description of the command.
+ *
+ * @var ws_help_entry_specific_t::required
+ * @brief Flags/subcommands that are a required when running this command.
+ *
+ * @var ws_help_entry_specific_t::required_count
+ * @brief Amount of flags/subcommands in the `required` part of this structure. It's the count, not the indexes.
+ *
+ * @var ws_help_entry_specific_t::optional
+ * @brief Flags/subcommands that are optional when running this command.
+ *
+ * @var ws_help_entry_specific_t::optional_count
+ * @brief Amount of flags/subcommands in the `optional` part of this structure. It's the count, not the indexes.
+ */
+
+/**
+ * @struct ws_color_t wall_shell.h
+ * @brief Color structure used internally by WallShell
+ *
+ * All internal color settings use this, along with allowing the user the ability to set both foreground and background at the same time.
+ *
+ * @var ws_color_t::foreground
+ * @brief Foreground color of the structure.
+ *
+ * @var ws_color_t::background
+ * @brief Background color of the structure.
+ */
+
+/**
+ * @struct ws_atomic_bool_t wall_shell.h
+ * @brief Atomic bool structure provided by WallShell.
+ *
+ * This is simply a wrapper around your system's mutex type. How it's created, destroyed, and accessed is very important.
+ *
+ * @warning Even though they are exposed, you should never access member varibles directly.
+ * Make sure you use @ref ws_getAtomicBool() and @ref ws_setAtomicBool().
+ * Create & destory it using @ref ws_createAtomicBool() and @ref ws_destroyAtomicBool() respectively.
+ *
+ * @var ws_atomic_bool_t::b
+ * @brief  Bool currently stored by the atomic_bool. This should never be accessed directly.
+ *
+ * @var ws_atomic_bool_t::mut
+ * @brief Pointer to the mutex the bool uses. This should never be accessed directly.
+ */
+
+/**
+ * @property ws_fg_color_t
+ * @brief All built in foreground colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_FG_MAGENTA` is a darker shade of purple, while `WS_FG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_FG_YELLOW` is typically a shade or orange, while `WS_FG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ */
+
+/**
+ * @property ws_error_t
+ * @brief All potential error returns by WallShell functions.
+ *
+ * All returns should be descriptive enough to understand what they mean.
+ * Any function that can return a value from this enum will describe what it has the possiblity of returning and why.
+ */
+
+/**
+ * @property ws_bg_color_t
+ * @brief All built in background colors.
+ *
+ * Almost every single terminal will have themed colors relating to these.
+ * While it is possible to change to any RGB color using virtual terminal sequences, it's not advised.
+ * Using these allows for good cross platform support and is guaranteed to work almost anywhere.
+ * These colors are even supported by old BIOS text modes, along with modern VESA and GOP modes.
+ *
+ * @note Almost all of these colors are exactly as the name is described, with the exception of 4.
+ * The "yellows" and "magenta" are slightly off of what you'd expect.
+ * Typically, `WS_BG_MAGENTA` is a darker shade of purple, while `WS_BG_BRIGHT_MAGENTA` is what you'd normally consider magenta.
+ * Similarly, `WS_BG_YELLOW` is typically a shade or orange, while `WS_BG_BRIGHT_YELLOW` is what you'd expect for yellow.
+ *
+ * @warning Background colors are highly dependent on the terminal being used.
+ * It's advised to use `WS_BG_DEFAULT` if you don't explicity need a background color.
+ * Some terminals have transparency that will be messed up by other color backgrounds.
+ * It's also important to note that not every terminal will fill the background when a newline character is used,
+ *  or for spaces not followed by another character.
+ */
+
+/**
+ * @property ws_stream
+ * @brief Simple enum relating to stream types that WallShell uses.
+ *
+ * Mostly used exclusively in @ref ws_setStream().
+ */
+
+/**
+ * @property ws_cursor_t
+ * @brief Cursor directions.
+ *
+ * These are internal cursor directions.
+ * The values they are assigned are related to their scancodes.
+ *
+ * @note For input using scancodes and not virtual terminal sequences, WallShell expects the `E0` scancode before these.
+ */
+
+/**
+ * @property ws_logtype_t
+ * @brief Logging types.
+ *
+ * These are meant to be used in conjunction with all logger functions.
+ * The logtype determines what will be printed out.
+ */

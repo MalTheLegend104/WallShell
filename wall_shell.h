@@ -1,8 +1,25 @@
 /**
  * @file wall_shell.h
  * @author MalTheLegend104
- * @brief C99 compliant command handler. Meant to be easily portable and highly configurable.
+ * @brief Main header file for WallShell.
+ *
+ * C99 compliant command handler. Meant to be easily portable and highly configurable.
+ *
  * @version v1.0
+ * @copyright
+ * Copyright 2024 MalTheLegend104
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 #ifndef COMMAND_HANDLER_H
@@ -41,12 +58,28 @@
 #ifndef CUSTOM_THREADS
 #ifdef _WIN32
 #include <Windows.h>
+/**
+ * @brief Wrapper around your system's mutex type.
+ * @note `CRITICAL_SECTION` is replaced with your systems mutex type.
+ */
 typedef CRITICAL_SECTION ws_mutex_t;
+/**
+ * @brief Wrapper around your system's thread handle.
+ * @note `DWORD` is replaced with your systems thread handle type.
+ */
 typedef DWORD ws_thread_id_t;
 
 #else
 #include <pthread.h>
+/**
+ * @brief Wrapper around your system's mutex type.
+ * @note `pthread_mutex_t` is replaced with your systems mutex type.
+ */
 typedef pthread_mutex_t ws_mutex_t;
+/**
+ * @brief Wrapper around your system's thread hadnle.
+ * @note `uint64_t` is replaced with your systems thread handle type.
+ */
 typedef uint64_t ws_thread_id_t;
 #endif // _WIN32
 #endif
@@ -97,13 +130,9 @@ typedef enum {
 	WALLSHELL_OUT_OF_MEMORY,
 	WALLSHELL_COMMAND_LIMIT_REACHED,
 	WALLSHELL_OUT_STREAM_NOT_SET,
-	WALLSHELL_CANT_SET_DEFAULT_TO_DEFAULT,
 	WALLSHELL_WS_SETUP_ERROR
 } ws_error_t;
 
-/**
- * @brief Command type, holds the function pointer, it's help function pointer, command name, aliases, and amount of aliases.
- */
 typedef struct {
 	int (*mainCommand)(int argc, char** argv);
 	int (*helpCommand)(int argc, char** argv);
@@ -112,12 +141,6 @@ typedef struct {
 	size_t aliases_count;
 } ws_command_t;
 
-/**
- * @brief General help structure. Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as NULL to not print them.
- *
- * This is meant for general command help entries, mostly meaning first level commands (like clear, exit, etc.)
- */
 typedef struct {
 	const char* commandName;
 	const char* description;
@@ -127,12 +150,6 @@ typedef struct {
 	const int aliases_count;
 } ws_help_entry_general_t;
 
-/**
- * @brief Specific help structure. Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as NULL to not print them.
- *
- * This is meant for things like subcommands, flags, etc.
- */
 typedef struct {
 	const char* commandName;
 	const char* description;
@@ -201,9 +218,9 @@ ws_error_t ws_setConsoleColors(ws_color_t colors);
 
 /* Stream configurations. */
 typedef enum {
-	WALLSHELL_INPUT,
-	WALLSHELL_OUTPUT,
-	WALLSHELL_ERROR
+	WALLSHELL_INPUT,  /* Input stream. Defaults to stdin. */
+	WALLSHELL_OUTPUT, /* Ouput stream. Defaults to stdout. */
+	WALLSHELL_ERROR   /* Error stream. Defaults to stderr. */
 } ws_stream;
 
 void ws_setStream(ws_stream type, FILE* stream);

@@ -7,18 +7,18 @@ This document contains a list of all compile time options available to WallShell
 - [Compile-Time Options](#compile-time-options)
   - [Table of Contents](#table-of-contents)
   - [Usage](#usage)
-  - [PREVIOUS\_BUF\_SIZE](#previous_buf_size)
-  - [MAX\_COMMAND\_BUF](#max_command_buf)
-  - [NO\_LOGGING](#no_logging)
-  - [THREADED\_SUPPORT](#threaded_support)
-  - [DISABLE\_MALLOC](#disable_malloc)
-    - [COMMAND\_LIMIT](#command_limit)
-    - [MAX\_ARGS](#max_args)
-  - [CUSTOM\_CURSOR\_CONTROL](#custom_cursor_control)
-  - [CLEAR\_ROW](#clear_row)
+  - [PREVIOUS_BUF_SIZE](#previous_buf_size)
+  - [MAX_COMMAND_BUF](#max_command_buf)
+  - [NO_LOGGING](#no_logging)
+  - [THREADED_SUPPORT](#threaded_support)
+  - [DISABLE_MALLOC](#disable_malloc)
+    - [COMMAND_LIMIT](#command_limit)
+    - [MAX_ARGS](#max_args)
+  - [CUSTOM_CURSOR_CONTROL](#custom_cursor_control)
+  - [CLEAR_ROW](#clear_row)
   - [Commands](#commands)
-  - [CUSTOM\_WS\_SETUP](#custom_ws_setup)
-  - [CUSTOM\_WS\_COLORS](#custom_ws_colors)
+  - [CUSTOM_WS_SETUP](#custom_ws_setup)
+  - [CUSTOM_WS_COLORS](#custom_ws_colors)
 
 ## Usage
 
@@ -167,6 +167,7 @@ There is only two things you need to define:
 - `SET_WS_COLORS(a, b)`
   - `a` is the `ws_fg_color_t`, `b` is the `ws_bg_color_t`
   - Ideally, you should define this to expand to a function:
+
     ```c
     void ws_internal_changeConsoleColor(ws_fg_color_t fg, ws_bg_color_t bg);
     #define SET_WS_COLORS(a, b) ws_internal_changeConsoleColor(a, b);
