@@ -5,25 +5,42 @@ on:
     types: [created]
   workflow_dispatch:
 
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+  
 permissions:
   contents: write
+  pages: write     
+  id-token: write
 
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
       - name: Set up Doxygen
         run: sudo apt-get update && sudo apt-get install -y doxygen
 
       - name: Generate Doxygen documentation
         run: doxygen Doxyfile
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload html directory made by doxygen.
+          path: './html'
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./html
+        id: deployment
+        uses: actions/deploy-pages@v4
