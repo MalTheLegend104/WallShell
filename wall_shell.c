@@ -141,11 +141,11 @@ FILE* ws_in_stream = NULL;
  */
 void ws_setStream(ws_stream type, FILE* stream) {
 	switch (type) {
-		case WALLSHELL_INPUT: ws_in_stream = stream;
+		case WS_INPUT: ws_in_stream = stream;
 			break;
-		case WALLSHELL_OUTPUT: ws_out_stream = stream;
+		case WS_OUTPUT: ws_out_stream = stream;
 			break;
-		case WALLSHELL_ERROR: ws_err_stream = stream;
+		case WS_ERROR: ws_err_stream = stream;
 			break;
 		default: break;
 	}
@@ -155,9 +155,9 @@ void ws_setStream(ws_stream type, FILE* stream) {
  * @brief Initialize all streams to their defaults. All default to their std-versions. (stdout, stderr, stdin)
  */
 void ws_initializeDefaultStreams() {
-	ws_setStream(WALLSHELL_INPUT, stdin);
-	ws_setStream(WALLSHELL_ERROR, stderr);
-	ws_setStream(WALLSHELL_OUTPUT, stdout);
+	ws_setStream(WS_INPUT, stdin);
+	ws_setStream(WS_ERROR, stderr);
+	ws_setStream(WS_OUTPUT, stdout);
 }
 
 /**
@@ -195,21 +195,21 @@ struct termios old_settings, new_settings;
  *
  * This includes enabling virtual terminal input/output, disabling input buffering, and disabling echo input.
  *
- * @return WALLSHELL_WS_SETUP_ERROR if unsuccessful, WALLSHELL_NO_ERROR otherwise.
+ * @return WS_WS_SETUP_ERROR if unsuccessful, WS_NO_ERROR otherwise.
  */
 ws_error_t ws_internal_setConsoleMode() {
 #ifdef _WIN32
 	// Set output mode to handle virtual terminal sequences
 	HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (hOut == INVALID_HANDLE_VALUE) return WALLSHELL_WS_SETUP_ERROR;
+	if (hOut == INVALID_HANDLE_VALUE) return WS_WS_SETUP_ERROR;
 
 	HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-	if (hIn == INVALID_HANDLE_VALUE) return WALLSHELL_WS_SETUP_ERROR;
+	if (hIn == INVALID_HANDLE_VALUE) return WS_WS_SETUP_ERROR;
 
 	DWORD dwOriginalOutMode = 0;
 	DWORD dwOriginalInMode = 0;
-	if (!GetConsoleMode(hOut, &dwOriginalOutMode)) return WALLSHELL_WS_SETUP_ERROR;
-	if (!GetConsoleMode(hIn, &dwOriginalInMode)) return WALLSHELL_WS_SETUP_ERROR;
+	if (!GetConsoleMode(hOut, &dwOriginalOutMode)) return WS_WS_SETUP_ERROR;
+	if (!GetConsoleMode(hIn, &dwOriginalInMode)) return WS_WS_SETUP_ERROR;
 
 	DWORD dwRequestedOutModes = ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
 	DWORD dwRequestedInModes = ENABLE_VIRTUAL_TERMINAL_INPUT;
@@ -221,23 +221,23 @@ ws_error_t ws_internal_setConsoleMode() {
 		dwOutMode = dwOriginalOutMode | dwRequestedOutModes;
 		if (!SetConsoleMode(hOut, dwOutMode)) {
 			// Failed to set any VT mode, can't do anything here.
-			return WALLSHELL_WS_SETUP_ERROR;
+			return WS_WS_SETUP_ERROR;
 		}
 	}
 
 	DWORD dwInMode = dwOriginalInMode | dwRequestedInModes;
 	if (!SetConsoleMode(hIn, dwInMode)) {
 		// Failed to set VT input mode, can't do anything here.
-		return WALLSHELL_WS_SETUP_ERROR;
+		return WS_WS_SETUP_ERROR;
 	}
 
 	// Disable a few features that make a command handler hard to make
 	DWORD inMode = 0;
-	if (!GetConsoleMode(hIn, &inMode)) { return WALLSHELL_WS_SETUP_ERROR; }
+	if (!GetConsoleMode(hIn, &inMode)) { return WS_WS_SETUP_ERROR; }
 	inMode &= ~ENABLE_LINE_INPUT;
 	inMode &= ~ENABLE_PROCESSED_INPUT;
 	inMode &= ~ENABLE_ECHO_INPUT;
-	if (!SetConsoleMode(hIn, inMode)) { return WALLSHELL_WS_SETUP_ERROR; }
+	if (!SetConsoleMode(hIn, inMode)) { return WS_WS_SETUP_ERROR; }
 	fprintf(ws_out_stream, "\033=\033[?1h");
 #else
 	// POSIX terminals support
@@ -246,10 +246,10 @@ ws_error_t ws_internal_setConsoleMode() {
 	new_settings.c_lflag &= ~(ICANON | ECHO | IEXTEN);
 
 	// posix terminals send ASCII delete instead of backspace for some godforsaken reason
-	backspace_as_ascii_delete = true;
 	tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
 #endif // _WIN32
-	return WALLSHELL_NO_ERROR;
+	backspace_as_ascii_delete = true;
+	return WS_NO_ERROR;
 }
 
 /**
@@ -383,7 +383,7 @@ ws_color_t current_colors = { WS_FG_DEFAULT, WS_BG_DEFAULT };
 
 /**
  * @internal
- * @brief Resets all color variables to their defualt state.
+ * @brief Resets all color variables to their default state.
  */
 void ws_internal_cleanColors() {
 #ifdef THREADED_SUPPORT
@@ -400,12 +400,12 @@ void ws_internal_cleanColors() {
  * @internal
  * @brief Updates the current colors.
  *
- * @return ws_error_t WALLSHELL_OUT_STREAM_NOT_SET if the output stream hasn't been set yet. WALLSHELL_NO_ERROR otherwise.
+ * @return ws_error_t WS_OUT_STREAM_NOT_SET if the output stream hasn't been set yet. WS_NO_ERROR otherwise.
  */
 ws_error_t ws_internal_updateColors() {
 	COLOR_MUTEX_CHECK;
 	LOCK_COLOR_MUTEX;
-	if (!ws_out_stream) return WALLSHELL_OUT_STREAM_NOT_SET;
+	if (!ws_out_stream) return WS_OUT_STREAM_NOT_SET;
 	if (current_colors.foreground == WS_FG_DEFAULT) {
 		current_colors.foreground = default_colors.foreground;
 	}
@@ -414,7 +414,7 @@ ws_error_t ws_internal_updateColors() {
 	}
 	SET_WS_COLORS(current_colors.foreground, current_colors.background);
 	UNLOCK_COLOR_MUTEX;
-	return WALLSHELL_NO_ERROR;
+	return WS_NO_ERROR;
 }
 
 /**
@@ -463,7 +463,7 @@ ws_color_t ws_getDefaultColors() { return default_colors; }
 /**
  * @brief Set the background and foreground colors to the provided ones.
  * @param colors Colors to set the background and foreground to.
- * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ * @return Can return WS_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
  */
 ws_error_t ws_setConsoleColors(ws_color_t colors) {
 	COLOR_MUTEX_CHECK;
@@ -477,7 +477,7 @@ ws_error_t ws_setConsoleColors(ws_color_t colors) {
 /**
  * @brief Sets the foreground color to the provided color.
  * @param color Color to set the foreground to.
- * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ * @return Can return WS_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
  */
 ws_error_t ws_setForegroundColor(ws_fg_color_t color) {
 	COLOR_MUTEX_CHECK;
@@ -490,7 +490,7 @@ ws_error_t ws_setForegroundColor(ws_fg_color_t color) {
 /**
  * @brief Sets the background color to the provided color.
  * @param color Color to set the background to.
- * @return Can return WALLSHELL_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
+ * @return Can return WS_OUT_STREAM_NOT_SET if the stream hasn't be initialized.
  */
 ws_error_t ws_setBackgroundColor(ws_bg_color_t color) {
 	COLOR_MUTEX_CHECK;
@@ -680,7 +680,7 @@ void ws_destroyAtomicBool(ws_atomic_bool_t* ab) {
 // Logging Functions
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-#ifndef NO_WALLSHELL_LOGGING
+#ifndef NO_WS_LOGGING
 #ifdef THREADED_SUPPORT
 ws_mutex_t* logging_mutex = NULL;
 #define LOCK_LOGGING_MUTEX ws_lockMutex(logging_mutex)
@@ -799,7 +799,7 @@ void ws_internal_logging_check() {
 	if (!logging_mutex) logging_mutex = ws_createMutex(); // We don't really care if it's NULL.
 #endif // THREADED_SUPPORT
 	// Make sure we have an out stream.
-	if (!ws_out_stream) ws_setStream(WALLSHELL_OUTPUT, stdout);
+	if (!ws_out_stream) ws_setStream(WS_OUTPUT, stdout);
 }
 
 #define LOGGING_CHECK ws_internal_logging_check()
@@ -1104,7 +1104,7 @@ void ws_internal_cleanLogger() {
 	fatal_colors = (ws_color_t){ WS_FG_RED, WS_BG_DEFAULT };
 }
 
-#endif // NO_WALLSHELL_LOGGING
+#endif // NO_WS_LOGGING
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -1155,7 +1155,7 @@ void ws_internal_cleanCommands() {
 /**
  * @brief Register the command to the command handler.
  * @param c Command to be registered.
- * @return Can return WALLSHELL_COMMAND_LIMIT_REACHED if DISABLE_MALLOC is defined, and WALLSHELL_OUT_OF_MEMORY if not.
+ * @return Can return WS_COMMAND_LIMIT_REACHED if DISABLE_MALLOC is defined, and WS_OUT_OF_MEMORY if not.
  */
 ws_error_t ws_registerCommand(const ws_command_t c) {
 #ifdef DISABLE_MALLOC
@@ -1163,7 +1163,7 @@ ws_error_t ws_registerCommand(const ws_command_t c) {
 		commands[current_command_spot] = c;
 		current_command_spot++;
 	} else {
-		return WALLSHELL_COMMAND_LIMIT_REACHED;
+		return WS_COMMAND_LIMIT_REACHED;
 	}
 #else
 	if (!commands) {
@@ -1181,7 +1181,7 @@ ws_error_t ws_registerCommand(const ws_command_t c) {
 		if (!new_ptr) {
 			if (was_one)
 				command_size--;
-			return WALLSHELL_OUT_OF_MEMORY;
+			return WS_OUT_OF_MEMORY;
 		} else {
 			commands = new_ptr;
 		}
@@ -1191,7 +1191,7 @@ ws_error_t ws_registerCommand(const ws_command_t c) {
 	commands[current_command_spot] = c;
 	current_command_spot++;
 #endif
-	return WALLSHELL_NO_ERROR;
+	return WS_NO_ERROR;
 }
 
 /**
@@ -1658,7 +1658,7 @@ input_result_t ws_internal_processEO() {
 /**
  * @brief Execute a command with the provided buffer.
  * @param commandBuf Buffer containing the command to execute, including any flags, parameters, etc.
- * @return Can return WALLSHELL_OUT_OF_MEMORY if malloc returns NULL when DISABLE_MALLOC is not defined.
+ * @return Can return WS_OUT_OF_MEMORY if malloc returns NULL when DISABLE_MALLOC is not defined.
  */
 ws_error_t ws_executeCommand(char* commandBuf) {
 #ifdef DISABLE_MALLOC
@@ -1688,7 +1688,7 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 				for (int i = 0; i < argc; i++) free(argv[i]);
 				free(argv);
 			}
-			return WALLSHELL_OUT_OF_MEMORY;
+			return WS_OUT_OF_MEMORY;
 		} else {
 			argv = newptr;
 		}
@@ -1702,7 +1702,7 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 	if (argc == 0) {
 		// Somehow got an empty command.
 		if (argv) free(argv);
-		return WALLSHELL_NO_ERROR;
+		return WS_NO_ERROR;
 	}
 #endif // DISABLE_MALLOC
 	// Call Command (if it exists)
@@ -1738,7 +1738,7 @@ cleanup:
 	free(argv);
 #endif // DISABLE_MALLOC
 	ws_setConsoleColors(ws_getDefaultColors());
-	return WALLSHELL_NO_ERROR;
+	return WS_NO_ERROR;
 }
 
 // Default prefix
@@ -1780,7 +1780,7 @@ void ws_cleanAll() {
 
 /**
  * @brief Main function for the terminal. Call after any configuration.
- * @return Can return WALLSHELL_OUT_OF_MEMORY if DISABLE_MALLOC is not defined, and malloc returns NULL.
+ * @return Can return WS_OUT_OF_MEMORY if DISABLE_MALLOC is not defined, and malloc returns NULL.
  */
 ws_error_t ws_terminalMain() {
 	/* We're assuming that the user has printed everything they want prior to calling main. */
@@ -1790,9 +1790,9 @@ ws_error_t ws_terminalMain() {
 #endif
 
 	// Check for stream configurations
-	if (!ws_err_stream) ws_setStream(WALLSHELL_ERROR, stderr);
-	if (!ws_out_stream) ws_setStream(WALLSHELL_OUTPUT, stdout);
-	if (!ws_in_stream) ws_setStream(WALLSHELL_INPUT, stdin);
+	if (!ws_err_stream) ws_setStream(WS_ERROR, stderr);
+	if (!ws_out_stream) ws_setStream(WS_OUTPUT, stdout);
+	if (!ws_in_stream) ws_setStream(WS_INPUT, stdin);
 
 #ifndef CUSTOM_WS_SETUP
 	ws_internal_setConsoleMode();
@@ -1804,7 +1804,7 @@ ws_error_t ws_terminalMain() {
 	/* Ideally something should've caught this before calling main, but we still need to check. */
 #ifndef DISABLE_MALLOC
 	if (!commands) commands = malloc(sizeof(ws_command_t));
-	if (!commands) return WALLSHELL_OUT_OF_MEMORY;
+	if (!commands) return WS_OUT_OF_MEMORY;
 #endif
 	bool newCommand = true;
 	bool tabPressed = false; // allows for autocompletion
@@ -1816,7 +1816,7 @@ ws_error_t ws_terminalMain() {
 	char oldCommand[MAX_COMMAND_BUF];
 
 	input_result_t input_result = { 0, 0 };
-
+	CHECK_EXIT_BOOL_EXISTS;
 	while (!GET_EXIT_BOOL) {
 		if (newCommand) {
 			fprintf(ws_out_stream, "%s", prefix);
@@ -1895,6 +1895,8 @@ ws_error_t ws_terminalMain() {
 			ws_sleep(10);
 			continue;
 		}
+
+		// printf("current c: %c - %d\n", current, current);
 
 		if (backspace_as_ascii_delete && current == 0x7f)
 			current = '\b';
@@ -2041,13 +2043,12 @@ ws_error_t ws_terminalMain() {
 				fprintf(ws_out_stream, "%c", current);
 			}
 			current_position++;
-			//printf("current command: %s -> size: %llu -> pos: %zu\n", commandBuf, strlen(commandBuf), current_position);
 		}
 #ifdef PRINTING_NEEDS_FLUSH
 		fflush(ws_out_stream);
 #endif
 	}
-	return WALLSHELL_NO_ERROR;
+	return WS_NO_ERROR;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2180,19 +2181,13 @@ bool ws_promptUser(const char* format, ...) {
 	va_end(arg);
 
 	fprintf(ws_out_stream, " [Y/n] ");
-	int first_input;
-	do {
-		first_input = ws_get_char(ws_in_stream);
-		ws_sleep(10);
-	} while (first_input == -2);
+	int first_input = ws_get_char_blocking(ws_in_stream);
 	fprintf(ws_out_stream, "%c", first_input);
 	int input;
 	do {
-		do {
-			input = ws_get_char(ws_in_stream);
-		} while (input == -2);
+		 input = ws_get_char_blocking(ws_in_stream);
 		fprintf(ws_out_stream, "%c", input);
-	} while (input != '\n');
+	} while (input != '\n' && input != '\r');
 	if (first_input == 'Y' || first_input == 'y') return true;
 	return false;
 }
@@ -2201,7 +2196,7 @@ bool ws_promptUser(const char* format, ...) {
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // The bottom of this file is to document things for Doxygen that aren't necessarily able to be
-// documeneted elsewhere, or are otherwise messy to do so. This includes things like structs, 
+// documented elsewhere, or are otherwise messy to do so. This includes things like structs,
 // typedefs, unions, etc. Anything that isn't documented in place should be done so here. 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -2210,7 +2205,7 @@ bool ws_promptUser(const char* format, ...) {
  * @struct ws_command_t wall_shell.h
  * @brief Command Data Structure
  *
- * This structure holds all data related to the command. There are two required entires, `mainCommand` and `commandName`.
+ * This structure holds all data related to the command. There are two required entries, `mainCommand` and `commandName`.
  * The rest of the structures are optional, and if they are unused should be set to `NULL`, `nullptr`, or `0` respectively.
  *
  * @var ws_command_t::mainCommand
@@ -2331,9 +2326,9 @@ bool ws_promptUser(const char* format, ...) {
  *
  * This is simply a wrapper around your system's mutex type. How it's created, destroyed, and accessed is very important.
  *
- * @warning Even though they are exposed, you should never access member varibles directly.
+ * @warning Even though they are exposed, you should never access member variables directly.
  * Make sure you use @ref ws_getAtomicBool() and @ref ws_setAtomicBool().
- * Create & destory it using @ref ws_createAtomicBool() and @ref ws_destroyAtomicBool() respectively.
+ * Create & destroy it using @ref ws_createAtomicBool() and @ref ws_destroyAtomicBool() respectively.
  *
  * @var ws_atomic_bool_t::b
  * @brief  Bool currently stored by the atomic_bool. This should never be accessed directly.
@@ -2362,7 +2357,7 @@ bool ws_promptUser(const char* format, ...) {
  * @brief All potential error returns by WallShell functions.
  *
  * All returns should be descriptive enough to understand what they mean.
- * Any function that can return a value from this enum will describe what it has the possiblity of returning and why.
+ * Any function that can return a value from this enum will describe what it has the possibility of returning and why.
  */
 
 /**
@@ -2380,7 +2375,7 @@ bool ws_promptUser(const char* format, ...) {
  * Similarly, `WS_BG_YELLOW` is typically a shade or orange, while `WS_BG_BRIGHT_YELLOW` is what you'd expect for yellow.
  *
  * @warning Background colors are highly dependent on the terminal being used.
- * It's advised to use `WS_BG_DEFAULT` if you don't explicity need a background color.
+ * It's advised to use `WS_BG_DEFAULT` if you don't explicitly need a background color.
  * Some terminals have transparency that will be messed up by other color backgrounds.
  * It's also important to note that not every terminal will fill the background when a newline character is used,
  *  or for spaces not followed by another character.
