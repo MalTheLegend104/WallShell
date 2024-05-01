@@ -5,7 +5,7 @@
  *
  * This file provides a skeleton to follow when implementing WallShell in a freestanding environment.~
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *

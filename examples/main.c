@@ -5,7 +5,7 @@
  *
  * This file is the first example of how to use WallShell in your program.
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *

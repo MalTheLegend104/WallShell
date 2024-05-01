@@ -1,7 +1,7 @@
 # @file CMakeLists.txt
 # @author MalTheLegend104
 # @brief CMake file for all examples.
-# @version v1.0
+# @version v1.0.0
 # @copyright
 # Copyright 2024 MalTheLegend104
 # Licensed under the Apache License, Version 2.0 (the "License");

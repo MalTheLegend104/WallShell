@@ -6,7 +6,7 @@
  * This file is an example of how a freestanding environment may set up its config.
  * Unlike the normal wallshell_config.h, this file *does* have a license, since it's an example.
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *

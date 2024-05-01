@@ -5,7 +5,7 @@
  *
  * This file shows you how to use threads in combination with WallShell.
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *

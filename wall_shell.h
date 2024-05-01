@@ -5,7 +5,7 @@
  *
  * C99 compliant command handler. Meant to be easily portable and highly configurable.
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *

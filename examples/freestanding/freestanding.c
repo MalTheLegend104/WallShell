@@ -5,7 +5,7 @@
  *
  * This file is an example of how to implement a freestanding version of WallShell.
  *
- * @version v1.0
+ * @version v1.0.0
  * @copyright
  * Copyright 2024 MalTheLegend104
  *
