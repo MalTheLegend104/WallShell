@@ -145,7 +145,7 @@ void ws_setStream(ws_stream type, FILE* stream) {
 			break;
 		case WS_OUTPUT: ws_out_stream = stream;
 			break;
-		case WS_ERROR: ws_err_stream = stream;
+		case WS_ERROR_S: ws_err_stream = stream;
 			break;
 		default: break;
 	}
@@ -156,7 +156,7 @@ void ws_setStream(ws_stream type, FILE* stream) {
  */
 void ws_initializeDefaultStreams() {
 	ws_setStream(WS_INPUT, stdin);
-	ws_setStream(WS_ERROR, stderr);
+	ws_setStream(WS_ERROR_S, stderr);
 	ws_setStream(WS_OUTPUT, stdout);
 }
 

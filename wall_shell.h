@@ -220,7 +220,7 @@ ws_error_t ws_setConsoleColors(ws_color_t colors);
 typedef enum {
 	WS_INPUT,  /* Input stream. Defaults to stdin. */
 	WS_OUTPUT, /* Output stream. Defaults to stdout. */
-	WS_ERROR   /* Error stream. Defaults to stderr. */
+	WS_ERROR_S /* Error stream. Defaults to stderr. */
 } ws_stream;
 
 void ws_setStream(ws_stream type, FILE* stream);
