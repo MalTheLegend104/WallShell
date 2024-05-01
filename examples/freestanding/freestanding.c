@@ -1,9 +1,9 @@
 /**
- * @file main.c
+ * @file freestanding.c
  * @author MalTheLegend104
- * @brief Example 1
+ * @brief Freestanding Example
  *
- * This file is the first example of how to use WallShell in your program.
+ * This file is an example of how to implement a freestanding version of WallShell.
  *
  * @version v1.0
  * @copyright
