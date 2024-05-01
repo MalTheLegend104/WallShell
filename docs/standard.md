@@ -9,11 +9,11 @@ while still providing a feature-rich command line interface.
 > [See this for more details.](options.md)
 
 - All standard library function calls are expected to work as specified in the ISO C99 standard.
-    - [glibc](https://www.gnu.org/software/libc/),
-      [musl](https://musl.libc.org/),
-      [mlibc](https://github.com/managarm/mlibc), and
-      [msvc's libc](https://learn.microsoft.com/en-us/cpp/c-language/c-language-reference?view=msvc-170)
-      are guaranteed to work.
+  - [glibc](https://www.gnu.org/software/libc/),
+    [musl](https://musl.libc.org/),
+    [mlibc](https://github.com/managarm/mlibc), and
+    [msvc's libc](https://learn.microsoft.com/en-us/cpp/c-language/c-language-reference?view=msvc-170)
+    are guaranteed to work.
 
 ### Note on MSVC
 
@@ -47,7 +47,7 @@ These headers/functions typically have to be defined by your standard library (o
 ### `string.h`
 
 - `strtok`
-    - This is only needed if `DISABLE_MALLOC` is not defined. It typically uses `malloc()` internally.
+  - This is only needed if `DISABLE_MALLOC` is not defined. It typically uses `malloc()` internally.
 - `strlen`
 - `strcmp`
 - `strcpy`
@@ -56,23 +56,23 @@ These headers/functions typically have to be defined by your standard library (o
 
 ### `stdlib.h`
 
-#### If `DISABLE_MALLOC` is not defined:
+#### If `DISABLE_MALLOC` is not defined
 
 - `malloc`
 - `realloc`
 
-#### If `DISABLE_MALLOC` is defined:
+#### If `DISABLE_MALLOC` is defined
 
 - Nothing (the header is still expected to exist, even if empty).
 
 ### `stdio.h`
 
 - `fprintf`
-    - This is probably the biggest problem for freestanding environments without a standard lib.
-    - A simple solution is to map this to `printf`, and define the following:
-        - `FILE`
-        - `stdin`
-        - `stdout`
-        - `stderr`
-        - `EOF`
-        - These definitions don't necessarily have to do anything, they just need to be defined.
+  - This is probably the biggest problem for freestanding environments without a standard lib.
+  - A simple solution is to map this to `printf`, and define the following:
+    - `FILE`
+    - `stdin`
+    - `stdout`
+    - `stderr`
+    - `EOF`
+    - These definitions don't necessarily have to do anything, they just need to be defined.

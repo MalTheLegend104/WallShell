@@ -32,7 +32,7 @@ This function acts the same as `vprintf`.
 
 ### Output Stream
 
-It's important to note that the output stream for these is not necessarily `stdout`, it's whatever the current output stream is set to. If you never call `ws_setStream(WALLSHELL_OUTPUT, <stream>)`, it defaults to stdout, otherwise, it will print to whatever `WALLSHELL_OUTPUT` is set to.
+It's important to note that the output stream for these is not necessarily `stdout`, it's whatever the current output stream is set to. If you never call `ws_setStream(WS_OUTPUT, <stream>)`, it defaults to stdout, otherwise, it will print to whatever `WS_OUTPUT` is set to.
 
 ## Changing Colors
 

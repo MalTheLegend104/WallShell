@@ -51,7 +51,7 @@ This list below lists everywhere you can find information about using WallShell 
 
 - [Getting Started](docs/getting_started.md)
 - [General Purpose Docs](docs/README.md)
-- [In-Depth Example](examples/main.c)
+- [In-Depth Examples](examples/README.md)
 - [FAQ](docs/FAQ.md)
 - [Contribution Guide](docs/contributing.md)
 - All functions (save for a few internal ones) are documented using doxygen comments.

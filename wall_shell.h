@@ -108,12 +108,12 @@ void ws_sleep(size_t ms);
 void ws_stopTerminal();
 
 /* Thread names for logging */
-#ifndef NO_WALLSHELL_LOGGING
+#ifndef NO_WS_LOGGING
 void ws_setThreadName(char* name);
 void ws_removeThreadName(const char* name);
 void ws_printThreadID();
 void ws_doPrintThreadID(bool b);
-#endif // NO_WALLSHELL_LOGGING
+#endif // NO_WS_LOGGING
 #endif // THREADED_SUPPORT
 
 #ifdef DISABLE_MALLOC
@@ -126,11 +126,11 @@ void ws_doPrintThreadID(bool b);
 #endif // DISABLE_MALLOC
 
 typedef enum {
-	WALLSHELL_NO_ERROR = 0,
-	WALLSHELL_OUT_OF_MEMORY,
-	WALLSHELL_COMMAND_LIMIT_REACHED,
-	WALLSHELL_OUT_STREAM_NOT_SET,
-	WALLSHELL_WS_SETUP_ERROR
+	WS_NO_ERROR = 0,
+	WS_OUT_OF_MEMORY,
+	WS_COMMAND_LIMIT_REACHED,
+	WS_OUT_STREAM_NOT_SET,
+	WS_WS_SETUP_ERROR
 } ws_error_t;
 
 typedef struct {
@@ -218,9 +218,9 @@ ws_error_t ws_setConsoleColors(ws_color_t colors);
 
 /* Stream configurations. */
 typedef enum {
-	WALLSHELL_INPUT,  /* Input stream. Defaults to stdin. */
-	WALLSHELL_OUTPUT, /* Ouput stream. Defaults to stdout. */
-	WALLSHELL_ERROR   /* Error stream. Defaults to stderr. */
+	WS_INPUT,  /* Input stream. Defaults to stdin. */
+	WS_OUTPUT, /* Output stream. Defaults to stdout. */
+	WS_ERROR_S /* Error stream. Defaults to stderr. */
 } ws_stream;
 
 void ws_setStream(ws_stream type, FILE* stream);
@@ -256,7 +256,7 @@ bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2);
 void ws_cleanAll();
 
 /* Logger */
-#ifndef NO_WALLSHELL_LOGGING
+#ifndef NO_WS_LOGGING
 typedef enum {
 	WS_LOG,
 	WS_DEBUG,
@@ -269,6 +269,6 @@ typedef enum {
 void ws_logger(ws_logtype_t type, const char* format, ...);
 void ws_vlogger(ws_logtype_t type, const char* format, va_list args);
 void ws_setLoggerColors(ws_logtype_t type, ws_fg_color_t fg, ws_bg_color_t bg);
-#endif // NO_WALLSHELL_LOGGING
+#endif // NO_WS_LOGGING
 
 #endif // COMMAND_HANDLER_H
