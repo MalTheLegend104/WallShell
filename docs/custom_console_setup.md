@@ -4,7 +4,7 @@ You should only consider doing this if you are on a non-standard system that isn
 
 There are several things that need to be defined:
 
-## `ws_error_t setConsoleMode()`
+## ws_error_t setConsoleMode()
 
 - Expected to set the console mode to what WallShell expects.
   - WallShell expects the following conditions:
@@ -14,7 +14,7 @@ There are several things that need to be defined:
     - Raw Buffering
       - The terminal should not wait for the user to press enter to send key presses to WallShell.
 
-## `void ws_resetConsoleState()`
+## void ws_resetConsoleState()
 
 - Expected to reset the console state on systems where it's needed.
 - Some systems, namely unix ones using `terminos`, don't go back to a default state when a program exits.

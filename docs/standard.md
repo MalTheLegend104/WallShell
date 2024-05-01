@@ -44,7 +44,7 @@ library:
 
 These headers/functions typically have to be defined by your standard library (or you) themselves.
 
-### `string.h`
+### string.h
 
 - `strtok`
   - This is only needed if `DISABLE_MALLOC` is not defined. It typically uses `malloc()` internally.
@@ -54,18 +54,18 @@ These headers/functions typically have to be defined by your standard library (o
 - `memcpy`
 - `memset`
 
-### `stdlib.h`
+### stdlib.h
 
-#### If `DISABLE_MALLOC` is not defined
+#### If DISABLE_MALLOC is not defined
 
 - `malloc`
 - `realloc`
 
-#### If `DISABLE_MALLOC` is defined
+#### If DISABLE_MALLOC is defined
 
 - Nothing (the header is still expected to exist, even if empty).
 
-### `stdio.h`
+### stdio.h
 
 - `fprintf`
   - This is probably the biggest problem for freestanding environments without a standard lib.

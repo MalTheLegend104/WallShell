@@ -19,12 +19,12 @@ typedef enum {
 
 There are two main logging functions:
 
-### `void ws_logger(ws_logtype_t type, const char* format, ...)`
+### void ws_logger(ws_logtype_t type, const char* format, ...)
 
 This function acts like a normal `printf` function.
 It takes the same type of `printf` format string, the same args, etc.
 
-### `void ws_vlogger(ws_logtype_t type, const char* format, va_list args)`
+### void ws_vlogger(ws_logtype_t type, const char* format, va_list args)
 
 This function acts the same as `vprintf`.
 
