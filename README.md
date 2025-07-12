@@ -69,7 +69,7 @@ You may be wondering what's up with the name. Where did "Wall" come from? And is
 
 ## License
 
-Copyright 2024 [MalTheLegend104](https://github.com/MalTheLegend104/)
+Copyright 2025 [MalTheLegend104](https://github.com/MalTheLegend104/)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
