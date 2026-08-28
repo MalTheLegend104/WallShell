@@ -14,6 +14,7 @@ This document contains a list of all compile time options available to WallShell
   - [DISABLE_MALLOC](#disable_malloc)
     - [COMMAND_LIMIT](#command_limit)
     - [MAX_ARGS](#max_args)
+    - [MAX_ARGPARSE_NODES](#max_argparse_nodes)
   - [CUSTOM_CURSOR_CONTROL](#custom_cursor_control)
   - [CLEAR_ROW](#clear_row)
   - [Commands](#commands)
@@ -94,6 +95,13 @@ There are two parameters as a result of disabling malloc:
 - Defaults to 32
   - 32 should be a reasonable maximum, but if you find yourself using more than 32 arguments, increase this.
   - This doesn't necessarily have a large impact on memory usage, but making it excessively large(50+) will.
+
+### MAX_ARGPARSE_NODES
+
+- Max amount of arguments allowed when using WallShell argument parsing.
+- Defaults to 32
+  - Similar to `MAX_ARGS` above, just used in a different context.
+- This is documented more in depth in `wall_shell.h`
 
 ## CUSTOM_CURSOR_CONTROL
 

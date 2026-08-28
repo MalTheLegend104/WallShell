@@ -1,5 +1,5 @@
 /**
- * @file wallshell_config.h
+ * @file ws_config.h
  * @author MalTheLegend104
  * @brief Configuration file to put compile time options for WallShell.
  *

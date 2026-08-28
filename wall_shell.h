@@ -35,6 +35,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 
 /* Config Header */
 #if defined(__has_include)

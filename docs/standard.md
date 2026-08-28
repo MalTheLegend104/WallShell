@@ -65,6 +65,10 @@ These headers/functions typically have to be defined by your standard library (o
 
 - Nothing (the header is still expected to exist, even if empty).
 
+### ctypes.h
+
+- `isspace`
+
 ### stdio.h
 
 - `fprintf`

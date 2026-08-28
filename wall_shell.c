@@ -595,7 +595,8 @@ ws_mutex_t* ws_createMutex() {
  * @param mut mutex to be destroyed.
  */
 void ws_destroyMutex(ws_mutex_t* mut) {
-	ws_lockMutex(mut);
+	if (!mut) return;
+	// ws_lockMutex(mut); // not supposed to lock it on POSIX
 	pthread_mutex_destroy(mut);
 	free(mut);
 }
@@ -670,6 +671,7 @@ ws_atomic_bool_t* ws_createAtomicBool(bool b) {
  * @param ab Atomic bool to destroy.
  */
 void ws_destroyAtomicBool(ws_atomic_bool_t* ab) {
+	if (!ab) return;
 	ws_lockMutex(ab->mut);
 	ws_destroyMutex(ab->mut);
 	free(ab);
@@ -710,17 +712,17 @@ void ws_setThreadName(char* name) {
 	ws_lockMutex(thread_map_mut);
 	if (!thread_map) {
 		thread_map = (ws_thread_map_t*) calloc(1, sizeof(ws_thread_map_t));
-		if (!thread_map) return;
+		if (!thread_map) { ws_unlockMutex(thread_map_mut); return; }
 		thread_map_size++;
 	}
 	if (thread_map_size - 1 < thread_map_current) {
 		ws_thread_map_t* temp = realloc(thread_map, (thread_map_size + 1) * sizeof(ws_thread_map_t));
-		if (!temp) return;
+		if (!temp) { ws_unlockMutex(thread_map_mut); return; }
 		thread_map = temp;
 		thread_map_size++;
 	}
 	char* thread_name = calloc(strlen(name), sizeof(char));
-	if (!thread_name) return;
+	if (!thread_name) { ws_unlockMutex(thread_map_mut); return; }
 	strcpy(thread_name, name);
 
 	thread_map[thread_map_current].name = thread_name;
@@ -741,9 +743,9 @@ void ws_removeThreadName(const char* name) {
 	}
 	ws_lockMutex(thread_map_mut);
 
-	if (!thread_map) return;
-	if (thread_map_current == 0) return;
-	if (thread_map_size == 0) return; // This should be impossible.
+	if (!thread_map) { ws_unlockMutex(thread_map_mut); return; }
+	if (thread_map_current == 0) { ws_unlockMutex(thread_map_mut); return; }
+	if (thread_map_size == 0) { ws_unlockMutex(thread_map_mut); return; } // This should be impossible.
 
 	for (int i = 0; i < thread_map_current; i++) {
 		if (strcmp(thread_map[thread_map_current].name, name) == 0) {
@@ -2277,7 +2279,7 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 	}
 
 	// Call Command (if it exists)
-	
+
 	const ws_command_t* found = ws_internal_findCommand(argv[0]);
 	if (found) {
 		CONTEXT_MUTEX_CHECK;
@@ -2311,7 +2313,7 @@ ws_error_t ws_executeCommand(char* commandBuf) {
 		UNLOCK_CONTEXT_MUTEX;
 		goto cleanup;
 	}
-	
+
 	ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "Command not found: \"%s\"\n", argv[0]);
 

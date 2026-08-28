@@ -5,9 +5,9 @@
  *
  * This file shows you how to use threads in combination with WallShell.
  *
- * @version v1.0.0
+ * @version v2.0.0
  * @copyright
- * Copyright 2024 MalTheLegend104
+ * Copyright 2026 MalTheLegend104
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,17 @@
  * the behavior to demonstrate stopping the shell along with showing how to configure it.
  *************************************************************************************************/
 
+#ifndef _WIN32
+// Pthreads need a wrapper function, they expect a certain function type.
+// void* func(void*);
+void* ws_main_wrapper(void* arg) {
+	(void) arg;
+	ws_terminalMain();
+	return NULL;
+}
+
+#endif
+
 int main() {
 	// All configuration must happen *before* wallshell is running.
 	// You can also stop wallshell, reconfigure it, and restart it.
@@ -45,9 +56,9 @@ int main() {
 	HANDLE thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE) ws_terminalMain, NULL, 0, NULL);
 #else
 	pthread_t thread;
-	pthread_create(&thread, NULL, ws_terminalMain, NULL);
+	pthread_create(&thread, NULL, ws_main_wrapper, NULL);
 #endif
-	// This is an example of what 
+	// This is an example to show that we are indeed in different threads.
 	ws_setThreadName("Main");
 	for (int i = 0; i < 10; i++) {
 		ws_logger(WS_LOG, "%d", i);
