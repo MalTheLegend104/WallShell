@@ -1,9 +1,9 @@
 # @file CMakeLists.txt
 # @author MalTheLegend104
 # @brief CMake file for all examples.
-# @version v1.0.0
+# @version v2.0.0
 # @copyright
-# Copyright 2024 MalTheLegend104
+# Copyright 2026 MalTheLegend104
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -35,14 +35,14 @@ add_definitions(-DTHREADED_SUPPORT)
 add_executable(example_main_exe
 	../wall_shell.h
 	../wall_shell.c
-	../wallshell_config.h
+	../ws_config.h
 	main.c
 )
 
 add_executable(threaded_exe
 	../wall_shell.h
 	../wall_shell.c
-	../wallshell_config.h
+	../ws_config.h
 	threaded_example.c
 )
 
