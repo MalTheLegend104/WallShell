@@ -5,9 +5,9 @@
  *
  * C99 compliant command handler. Meant to be easily portable and highly configurable.
  *
- * @version v1.0.0
+ * @version v2.0.0
  * @copyright
- * Copyright 2024 MalTheLegend104
+ * Copyright 2026 MalTheLegend104
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -302,7 +302,9 @@ int ws_internal_getCharNonBlocking() {
 	}
 #endif
 }
-#define ws_get_char(stream) ws_internal_getCharNonBlocking()
+
+// Renamed to ws_internal_* to avoid conflicting with the public facing ws_get_char
+#define ws_internal_get_char_nonblocking(stream) ws_internal_getCharNonBlocking()
 #endif // CUSTOM_WS_SETUP
 
 // To aid portability, we allow the user to set backspace_as_ascii_delete
@@ -1113,7 +1115,7 @@ void ws_internal_cleanLogger() {
 // ------------------------------------------------------------------------------------------------
 
 #ifdef DISABLE_MALLOC
-command_t commands[COMMAND_LIMIT];
+ws_command_t commands[COMMAND_LIMIT];
 size_t command_size = COMMAND_LIMIT;
 #else
 ws_command_t* commands;
@@ -1136,11 +1138,7 @@ void ws_internal_cleanCommands() {
 	command_size = 0;
 #else
 	for (int i = 0; i < current_command_spot; i++) {
-		commands[current_command_spot].commandName = NULL;
-		commands[current_command_spot].aliases = NULL;
-		commands[current_command_spot].aliases_count = 0;
-		commands[current_command_spot].helpCommand = NULL;
-		commands[current_command_spot].mainCommand = NULL;
+		commands[current_command_spot] = (ws_command_t){ 0 };
 	}
 	command_size = COMMAND_LIMIT;
 #endif // DISABLE_MALLOC
@@ -1203,41 +1201,560 @@ void ws_deregisterCommand(const ws_command_t c) {
 		if (ws_compareCommands(commands[i], c)) {
 			for (int j = i; j < current_command_spot - 1; j++) {
 				// Nothing is allocated through malloc. If something is, it's on the user to free it either before/after calling this.
-				commands[j].commandName = commands[j + 1].commandName;
-				commands[j].aliases = commands[j + 1].aliases;
-				commands[j].aliases_count = commands[j + 1].aliases_count;
-				commands[j].helpCommand = commands[j + 1].helpCommand;
-				commands[j].mainCommand = commands[j + 1].mainCommand;
+				commands[j] = commands[j + 1];
 			}
+			commands[current_command_spot - 1] = (ws_command_t){ 0 };
+			current_command_spot--;
 			return;
 		}
 	}
 }
 
-/* Internal clear command */
-const char* clear_aliases[] = { "clr", "cls" };
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Argument Parsing
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+/**
+ * This struct is for internal use only.
+ * The end user will only see an opaque pointer to this.
+ * This is only for use with argparse-adjacent functions:
+ * - Returned by ws_parse_args()
+ * - ws_get<type>(char* argument_name)
+ */
+typedef struct wallshell_internal_argparse_t {
+	const ws_command_argument_t* argument;
+	union {
+		bool flag;
+		bool boolean;
+
+		char c;
+		const char* str;
+
+		int8_t int8;
+		int16_t int16;
+		int32_t int32;
+		int64_t int64;
+
+		uint8_t uint8;
+		uint16_t uint16;
+		uint32_t uint32;
+		uint64_t uint64;
+
+		float f;
+		double d;
+	};
+	struct wallshell_internal_argparse_t* next;
+} wallshell_argparse_t;
+
 /**
  * @internal
- * @brief Clear function help command
+ * @brief Definition of the opaque ws_context_t type declared in wall_shell.h.
+ *
+ * Holds the parsed argument values for whichever command WallShell is currently dispatching.
+ * There is a single one of these, reused for every command invocation (see ws_getCurrentContext()).
  */
-int clearHelp(int argc, char** argv) {
-	ws_help_entry_general_t entry = {
-			"Clear",
-			"Clears the screen",
-			NULL,
-			0,
-			clear_aliases,
-			2
-	};
-	ws_printGeneralHelp(&entry);
-	return 0;
+struct ws_context {
+	const ws_command_t* command; // Command this context is currently associated with.
+	bool parsed;                 // Whether ws_parse_args() has already been run for this invocation.
+#ifdef DISABLE_MALLOC
+	wallshell_argparse_t nodes[MAX_ARGPARSE_NODES];
+	size_t node_count;
+#else
+	wallshell_argparse_t* head;
+#endif // DISABLE_MALLOC
+};
+
+static ws_context_t ws_internal_current_context = { 0 };
+
+/* WallShell should technically only be run from one thread at a time.
+ * In threaded mode, it should be given it's own thread.
+ * There is a chance that the command gets dispatched to it's own different thread
+ * This is for protection against that so we don't end up in a bad state.
+ */
+#ifdef THREADED_SUPPORT
+ws_mutex_t* context_mutex = NULL;
+void ws_internal_context_mutex_check() {
+	if (!context_mutex) context_mutex = ws_createMutex();
 }
+#define CONTEXT_MUTEX_CHECK ws_internal_context_mutex_check()
+#define LOCK_CONTEXT_MUTEX ws_lockMutex(context_mutex)
+#define UNLOCK_CONTEXT_MUTEX ws_unlockMutex(context_mutex)
+#else
+#define CONTEXT_MUTEX_CHECK
+#define LOCK_CONTEXT_MUTEX
+#define UNLOCK_CONTEXT_MUTEX
+#endif // THREADED_SUPPORT
+
+/**
+ * @internal
+ * @brief Frees/resets whatever is currently stored in the context and re-associates it with a (potentially new) command.
+ */
+void ws_internal_context_reset(ws_context_t* ctx, const ws_command_t* command) {
+#ifndef DISABLE_MALLOC
+	wallshell_argparse_t* current = ctx->head;
+	while (current) {
+		wallshell_argparse_t* next = current->next;
+		free(current);
+		current = next;
+	}
+	ctx->head = NULL;
+#else
+	ctx->node_count = 0;
+#endif // DISABLE_MALLOC
+	ctx->command = command;
+	ctx->parsed = false;
+}
+
+/**
+ * @internal
+ * @brief Resets the global argparse context. Called as part of ws_cleanAll().
+ */
+void ws_internal_cleanContext() {
+	ws_internal_context_reset(&ws_internal_current_context, NULL);
+#ifdef THREADED_SUPPORT
+	if (context_mutex) ws_destroyMutex(context_mutex);
+	context_mutex = NULL;
+#endif // THREADED_SUPPORT
+}
+
+/**
+ * @brief Returns the argparse context for the command currently being executed by WallShell.
+ * @return ws_context_t* Context for the currently executing command, or NULL if no command is currently being dispatched.
+ */
+ws_context_t* ws_getCurrentContext() {
+	if (!ws_internal_current_context.command) return NULL;
+	return &ws_internal_current_context;
+}
+
+/**
+ * @internal
+ * @brief Strips up to two leading dashes off of a name, for comparison purposes.
+ */
+const char* ws_internal_stripDashes(const char* name) {
+	if (!name) return name;
+	if (name[0] == '-') {
+		name++;
+		if (name[0] == '-') name++;
+	}
+	return name;
+}
+
+/**
+ * @internal
+ * @brief Checks if a token matches an argument definition's name or shortform, dash-insensitively.
+ */
+bool ws_internal_argNameMatches(const ws_command_argument_t* arg, const char* token) {
+	const char* stripped_token = ws_internal_stripDashes(token);
+	if (arg->name && strcmp(ws_internal_stripDashes(arg->name), stripped_token) == 0) return true;
+	if (arg->shortform && strcmp(ws_internal_stripDashes(arg->shortform), stripped_token) == 0) return true;
+	return false;
+}
+
+/**
+ * @internal
+ * @brief Finds a non-GENERIC argument definition on a command matching the given (dashed) token.
+ */
+const ws_command_argument_t* ws_internal_findNamedArg(const ws_command_t* cmd, const char* token) {
+	for (size_t i = 0; i < cmd->arguments_count; i++) {
+		if (cmd->arguments[i].type == WS_ARG_TYPE_GENERIC) continue;
+		if (ws_internal_argNameMatches(&cmd->arguments[i], token)) return &cmd->arguments[i];
+	}
+	return NULL;
+}
+
+/**
+ * @internal
+ * @brief Finds the (index'th) GENERIC argument definition of a command, used to match positional arguments in order.
+ */
+const ws_command_argument_t* ws_internal_findGenericArg(const ws_command_t* cmd, size_t index) {
+	size_t seen = 0;
+	for (size_t i = 0; i < cmd->arguments_count; i++) {
+		if (cmd->arguments[i].type != WS_ARG_TYPE_GENERIC) continue;
+		if (seen == index) return &cmd->arguments[i];
+		seen++;
+	}
+	return NULL;
+}
+
+/**
+ * @internal
+ * @brief Looks up a previously-parsed node for the given argument name, dash-insensitively.
+ * NULL if not found.
+ */
+const wallshell_argparse_t* ws_internal_findNode(const ws_context_t* ctx, const char* name) {
+	if (!ctx || !name) return NULL;
+	const char* stripped = ws_internal_stripDashes(name);
+#ifdef DISABLE_MALLOC
+	for (size_t i = 0; i < ctx->node_count; i++) {
+		const wallshell_argparse_t* node = &ctx->nodes[i];
+		if (node->argument && ws_internal_argNameMatches(node->argument, stripped)) return node;
+	}
+#else
+	for (const wallshell_argparse_t* node = ctx->head; node; node = node->next) {
+		if (node->argument && ws_internal_argNameMatches(node->argument, stripped)) return node;
+	}
+#endif // DISABLE_MALLOC
+	return NULL;
+}
+
+/**
+ * @internal
+ * @brief Allocates (or claims a static slot for) a new node in the context, returning it to be filled in by the caller.
+ * @return Pointer to the new node, or NULL if allocation failed / the static array is full.
+ */
+wallshell_argparse_t* ws_internal_newNode(ws_context_t* ctx) {
+#ifdef DISABLE_MALLOC
+	if (ctx->node_count >= MAX_ARGPARSE_NODES) return NULL;
+	wallshell_argparse_t* node = &ctx->nodes[ctx->node_count++];
+	node->next = NULL;
+	return node;
+#else
+	wallshell_argparse_t* node = (wallshell_argparse_t*) malloc(sizeof(wallshell_argparse_t));
+	if (!node) return NULL;
+	node->next = ctx->head;
+	ctx->head = node;
+	return node;
+#endif // DISABLE_MALLOC
+}
+
+/**
+ * @internal
+ * @brief Prints a formatted argument parsing error to WallShell's error stream.
+ */
+void ws_internal_argError(const char* format, ...) {
+	ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
+	va_list args;
+	va_start(args, format);
+	vfprintf(ws_out_stream, format, args);
+	va_end(args);
+	fprintf(ws_out_stream, "\n");
+	ws_setConsoleColors(ws_getDefaultColors());
+}
+
+/**
+ * @internal
+ * @brief Parses a raw string into the correct union member for an argument's type, storing it in a new context node.
+ * On failure, prints to the output stream
+ *
+ * @return true on success, false if the value couldn't be parsed as the argument's declared type.
+ */
+bool ws_internal_parseAndStore(ws_context_t* ctx, const ws_command_argument_t* arg, const char* value) {
+	wallshell_argparse_t* node = ws_internal_newNode(ctx);
+	if (!node) {
+		ws_internal_argError("Too many arguments provided.");
+		return false;
+	}
+	node->argument = arg;
+
+	char* end = NULL;
+	switch (arg->type) {
+		case WS_ARG_TYPE_GENERIC:
+		case WS_ARG_TYPE_STRING: node->str = value; break;
+		case WS_ARG_TYPE_CHAR: node->c = value[0]; break;
+		case WS_ARG_TYPE_INT8: node->int8 = (int8_t) strtol(value, &end, 0); break;
+		case WS_ARG_TYPE_INT16: node->int16 = (int16_t) strtol(value, &end, 0); break;
+		case WS_ARG_TYPE_INT32: node->int32 = (int32_t) strtol(value, &end, 0); break;
+		case WS_ARG_TYPE_INT64: node->int64 = (int64_t) strtoll(value, &end, 0); break;
+		case WS_ARG_TYPE_UINT8: node->uint8 = (uint8_t) strtoul(value, &end, 0); break;
+		case WS_ARG_TYPE_UINT16: node->uint16 = (uint16_t) strtoul(value, &end, 0); break;
+		case WS_ARG_TYPE_UINT32: node->uint32 = (uint32_t) strtoul(value, &end, 0); break;
+		case WS_ARG_TYPE_UINT64: node->uint64 = (uint64_t) strtoull(value, &end, 0); break;
+		case WS_ARG_TYPE_FLOAT: node->f = strtof(value, &end); break;
+		case WS_ARG_TYPE_DOUBLE: node->d = strtod(value, &end); break;
+		default: end = (char*) value;  break; // FLAG/BOOL never hit this path.
+	}
+
+	if ((arg->type != WS_ARG_TYPE_STRING && arg->type != WS_ARG_TYPE_GENERIC && arg->type != WS_ARG_TYPE_CHAR) && (end == value)) {
+		ws_internal_argError("Argument \"%s\" expects a numeric value, got \"%s\".", arg->name, value);
+#ifdef DISABLE_MALLOC
+		ctx->node_count--;
+#else
+		ctx->head = node->next;
+		free(node);
+#endif // DISABLE_MALLOC
+		return false;
+	}
+	return true;
+}
+
+/**
+ * @internal
+ * @brief Checks if a token looks like a valid t/f/true/false value for a BOOL argument.
+ */
+bool ws_internal_isBoolToken(const char* token) {
+	if (!token) return false;
+	return strcmp(token, "t") == 0 || strcmp(token, "f") == 0 || strcmp(token, "true") == 0 || strcmp(token, "false") == 0;
+}
+
+bool ws_internal_parseBoolToken(const char* token) {
+	return token[0] == 't' || token[0] == 'T';
+}
+
+/**
+ * @brief Parse and validate the arguments for the current command.
+ * @see wall_shell.h for full documentation.
+ */
+bool ws_parse_args(ws_context_t* ctx, int argc, char** argv) {
+	if (!ctx || !ctx->command) return false;
+	const ws_command_t* cmd = ctx->command;
+	ws_internal_context_reset(ctx, cmd);
+
+	size_t generic_seen = 0;
+	for (int i = 1; i < argc; i++) {
+		char* token = argv[i];
+		if (token[0] == '-' && token[1] != '\0') {
+			const ws_command_argument_t* arg = ws_internal_findNamedArg(cmd, token);
+			if (!arg) {
+				ws_internal_argError("Unknown argument: %s", token);
+				return false;
+			}
+
+			if (arg->type == WS_ARG_TYPE_FLAG) {
+				wallshell_argparse_t* node = ws_internal_newNode(ctx);
+				if (!node) {
+					ws_internal_argError("Too many arguments provided.");
+					return false;
+				}
+				node->argument = arg;
+				node->flag = true;
+			} else if (arg->type == WS_ARG_TYPE_BOOL) {
+				wallshell_argparse_t* node = ws_internal_newNode(ctx);
+				if (!node) {
+					ws_internal_argError("Too many arguments provided.");
+					return false;
+				}
+				node->argument = arg;
+				node->boolean = true;
+				if (i + 1 < argc && ws_internal_isBoolToken(argv[i + 1])) {
+					node->boolean = ws_internal_parseBoolToken(argv[i + 1]);
+					i++;
+				}
+			} else {
+				if (i + 1 >= argc) {
+					ws_internal_argError("Argument \"%s\" expects a value.", arg->name);
+					return false;
+				}
+				i++;
+				if (!ws_internal_parseAndStore(ctx, arg, argv[i])) return false;
+			}
+		} else {
+			const ws_command_argument_t* generic = ws_internal_findGenericArg(cmd, generic_seen);
+			if (!generic) {
+				ws_internal_argError("Unexpected argument: %s", token);
+				return false;
+			}
+			generic_seen++;
+			if (!ws_internal_parseAndStore(ctx, generic, token)) return false;
+		}
+	}
+
+	// Validate that all required arguments were provided.
+	for (size_t i = 0; i < cmd->arguments_count; i++) {
+		if (!cmd->arguments[i].required) continue;
+		if (!ws_internal_findNode(ctx, cmd->arguments[i].name)) {
+			ws_internal_argError("Missing required argument: %s", cmd->arguments[i].name);
+			return false;
+		}
+	}
+
+	ctx->parsed = true;
+	return true;
+}
+
+bool ws_has_arg(const ws_context_t* ctx, const char* name) {
+	return ws_internal_findNode(ctx, name) != NULL;
+}
+
+bool ws_get_flag(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	return node ? node->flag : false;
+}
+
+bool ws_get_bool(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	return node ? node->boolean : false;
+}
+
+char ws_get_char(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	return node ? node->c : '\0';
+}
+
+const char* ws_get_string(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	return node ? node->str : NULL;
+}
+
+const char* ws_get_generic(const ws_context_t* ctx, const char* name) {
+	return ws_get_string(ctx, name);
+}
+
+/**
+ * @internal
+ * @brief Widens any of the signed integer union members into an int64_t based on the argument's declared type.
+ */
+int64_t ws_internal_widenSigned(const wallshell_argparse_t* node) {
+	switch (node->argument->type) {
+		case WS_ARG_TYPE_INT8: return node->int8;
+		case WS_ARG_TYPE_INT16: return node->int16;
+		case WS_ARG_TYPE_INT32: return node->int32;
+		case WS_ARG_TYPE_INT64: return node->int64;
+		default: return 0;
+	}
+}
+
+/**
+ * @internal
+ * @brief Widens any of the unsigned integer union members into a uint64_t based on the argument's declared type.
+ */
+uint64_t ws_internal_widenUnsigned(const wallshell_argparse_t* node) {
+	switch (node->argument->type) {
+		case WS_ARG_TYPE_UINT8: return node->uint8;
+		case WS_ARG_TYPE_UINT16: return node->uint16;
+		case WS_ARG_TYPE_UINT32: return node->uint32;
+		case WS_ARG_TYPE_UINT64: return node->uint64;
+		default: return 0;
+	}
+}
+
+int64_t ws_get_int64(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	if (!node) return 0;
+	return ws_internal_widenSigned(node);
+}
+
+uint64_t ws_get_uint64(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	if (!node) return 0;
+	return ws_internal_widenUnsigned(node);
+}
+
+double ws_get_double(const ws_context_t* ctx, const char* name) {
+	const wallshell_argparse_t* node = ws_internal_findNode(ctx, name);
+	if (!node) return 0.0;
+	if (node->argument->type == WS_ARG_TYPE_FLOAT) return (double) node->f;
+	return node->d;
+}
+
+/**
+ * @brief Prints a consistent, auto-generated help entry for a command based on its registered ws_command_argument_t list.
+ * @see wall_shell.h for full documentation.
+ */
+void ws_printCommandHelp(const ws_command_t* command) {
+	if (!command) return;
+
+	ws_setConsoleColors((ws_color_t) { WS_FG_RED, WS_BG_DEFAULT });
+	fprintf(ws_out_stream, "\n%s", command->command_name);
+	if (command->major != 0 || command->minor != 0 || command->patch != 0) {
+		fprintf(ws_out_stream, " (v%u.%u.%u)", command->major, command->minor, command->patch);
+	}
+	fprintf(ws_out_stream, "\n");
+
+	// Usage line.
+	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
+	fprintf(ws_out_stream, "Usage: %s", command->command_name);
+	for (size_t i = 0; i < command->arguments_count; i++) {
+		const ws_command_argument_t* arg = &command->arguments[i];
+		if (arg->type == WS_ARG_TYPE_GENERIC) {
+			fprintf(ws_out_stream, arg->required ? " <%s>" : " [%s]", arg->name);
+		} else {
+			fprintf(ws_out_stream, arg->required ? " --%s" : " [--%s]", ws_internal_stripDashes(arg->name));
+		}
+	}
+	fprintf(ws_out_stream, "\n");
+
+	if (command->alias_count > 0 && command->aliases) {
+		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
+		fprintf(ws_out_stream, "\nAliases:\n");
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
+		for (uint8_t i = 0; i < command->alias_count; i++) {
+			if (command->aliases[i]) fprintf(ws_out_stream, "  %s\n", command->aliases[i]);
+		}
+	}
+
+	bool printed_required_header = false, printed_optional_header = false;
+	for (size_t i = 0; i < command->arguments_count; i++) {
+		const ws_command_argument_t* arg = &command->arguments[i];
+		if (!arg->required) continue;
+		if (!printed_required_header) {
+			ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
+			fprintf(ws_out_stream, "\nRequired:\n");
+			printed_required_header = true;
+		}
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
+		if (arg->type == WS_ARG_TYPE_GENERIC) {
+			fprintf(ws_out_stream, "  %-16s", arg->name);
+		} else if (arg->shortform) {
+			fprintf(ws_out_stream, "  --%s, -%s", ws_internal_stripDashes(arg->name), ws_internal_stripDashes(arg->shortform));
+		} else {
+			fprintf(ws_out_stream, "  --%s", ws_internal_stripDashes(arg->name));
+		}
+		if (arg->description) fprintf(ws_out_stream, "  %s", arg->description);
+		fprintf(ws_out_stream, "\n");
+	}
+
+	for (size_t i = 0; i < command->arguments_count; i++) {
+		const ws_command_argument_t* arg = &command->arguments[i];
+		if (arg->required) continue;
+		if (!printed_optional_header) {
+			ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
+			fprintf(ws_out_stream, "\nOptional:\n");
+			printed_optional_header = true;
+		}
+		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
+		if (arg->type == WS_ARG_TYPE_GENERIC) {
+			fprintf(ws_out_stream, "  %-16s", arg->name);
+		} else if (arg->shortform) {
+			fprintf(ws_out_stream, "  --%s, -%s", ws_internal_stripDashes(arg->name), ws_internal_stripDashes(arg->shortform));
+		} else {
+			fprintf(ws_out_stream, "  --%s", ws_internal_stripDashes(arg->name));
+		}
+		if (arg->description) fprintf(ws_out_stream, "  %s", arg->description);
+		fprintf(ws_out_stream, "\n");
+	}
+
+	ws_setConsoleColors(ws_getDefaultColors());
+	fprintf(ws_out_stream, "\n");
+}
+
+/**
+ * @internal
+ * @brief Runs the help_func for a command if it has one, otherwise falls back to ws_printCommandHelp().
+ */
+void ws_internal_showCommandHelp(const ws_command_t* command, int argc, char** argv) {
+	if (command->help_func) {
+		command->help_func(argc, argv);
+	} else {
+		ws_printCommandHelp(command);
+	}
+}
+
+/**
+ * @internal
+ * @brief Checks argv (skipping argv[0], the command name) for a bare "--help"/"-h" token.
+ */
+bool ws_internal_wantsHelp(int argc, char** argv) {
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) return true;
+	}
+	return false;
+}
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// Basic Built-In Commands
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+
+/* Internal clear command */
+const char* clear_aliases[] = { "clr", "cls" };
 
 /**
  * @internal
  * @brief Clear function main command
  */
-int clearMain(int argc, char** argv) {
+int clearMain(void) {
 #ifdef _WIN32
 	// Windows being windows, some escape characters don't work normally in like 2/3 of the terminals
 	// This is especially evident in things spawned by AllocConsole()
@@ -1252,22 +1769,27 @@ int clearMain(int argc, char** argv) {
 }
 
 /* Internal help command */
+const ws_command_argument_t help_args[] = {
+	{ WS_ARG_TYPE_GENERIC, false, "command", NULL, "Command to show detailed help for." },
+	{ WS_ARG_TYPE_STRING, false, "--search", "-s", "Lists all commands and aliases that start with <string>." },
+};
+
 /**
  * @internal
  * @brief Help function search command
  */
-void helpSearch(char* str) {
+void helpSearch(const char* str) {
 	ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "List of commands starting with \"%s\": (A) indicates an alias.\n", str);
 	ws_setConsoleColors(ws_getDefaultColors());
 	for (int i = 0; i < current_command_spot; i++) {
 		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
-		if (commands[i].commandName && ws_internal_startsWith(commands[i].commandName, str)) {
-			fprintf(ws_out_stream, "\t%s\n", commands[i].commandName);
+		if (commands[i].command_name && ws_internal_startsWith(commands[i].command_name, str)) {
+			fprintf(ws_out_stream, "\t%s\n", commands[i].command_name);
 		}
 
 		// Check aliases for a match
-		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+		for (uint8_t alias_idx = 0; alias_idx < commands[i].alias_count; alias_idx++) {
 			if (commands[i].aliases[alias_idx] && ws_internal_startsWith(commands[i].aliases[alias_idx], str)) {
 				fprintf(ws_out_stream, "\t%s (A)\n", commands[i].aliases[alias_idx]);
 			}
@@ -1278,22 +1800,16 @@ void helpSearch(char* str) {
 
 /**
  * @internal
- * @brief Help function help command
+ * @brief Finds a registered command by name or alias. Returns NULL if none match.
  */
-int helpHelp(int argc, char** argv) {
-	const char* optional[] = {
-			"-s <string> -> Lists all commands and aliases that start with <string>."
-	};
-	ws_help_entry_specific_t entry = {
-			"Help",
-			"The help menu.",
-			NULL,
-			0,
-			optional,
-			1
-	};
-	ws_printSpecificHelp(&entry);
-	return 0;
+const ws_command_t* ws_internal_findCommand(const char* name) {
+	for (size_t i = 0; i < current_command_spot; i++) {
+		if (commands[i].command_name && strcmp(commands[i].command_name, name) == 0) return &commands[i];
+		for (uint8_t alias_idx = 0; alias_idx < commands[i].alias_count; alias_idx++) {
+			if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], name) == 0) return &commands[i];
+		}
+	}
+	return NULL;
 }
 
 /**
@@ -1301,123 +1817,51 @@ int helpHelp(int argc, char** argv) {
  * @brief Help function main command
  */
 int helpMain(int argc, char** argv) {
-	// Make sure there's more than one argument.
-	if (argc > 1) {
-		// remove help from argv
-		// Shift all pointers one position to the left
-		for (int i = 1; i < argc; i++) {
-			argv[i - 1] = argv[i];
-		}
-		argv[argc - 1] = NULL;
+	ws_context_t* ctx = ws_getCurrentContext();
+	if (!ws_parse_args(ctx, argc, argv)) return 1;
 
-		// Update the size of the array
-		argc--;
-		// Check for more args
-		if (argc >= 1) {
-			if ((strcmp(argv[0], "-s") == 0) || (strcmp(argv[0], "-search") == 0)) {
-				if (argc == 1) {
-					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-					fprintf(ws_out_stream, "Search flag must be followed by an argument.\n");
-				} else {
-					helpSearch(argv[1]);
-					return 0;
-				}
-			}
-		}
-
-		// Find the command
-		for (int i = 0; i < current_command_spot; i++) {
-			// Check the normal command name
-			if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
-				// No help function for command.
-				if (!commands[i].helpCommand) {
-					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-					fprintf(ws_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
-					ws_setConsoleColors(ws_getDefaultColors());
-					return 0;
-				}
-
-				// Execute the help command associated with the matched command
-				int result = commands[i].helpCommand(argc, argv);
-				if (result != 0) {
-					// If the command function returns a non-zero value, it may indicate an error
-					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-					fprintf(ws_out_stream, "Command exited with code: %d\n", result);
-					ws_setConsoleColors(ws_getDefaultColors());
-				}
-				return 0;
-			}
-
-			// Check aliases for a match
-			for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
-				if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
-					// No help function for command.
-					if (!commands[i].helpCommand) {
-						ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-						fprintf(ws_out_stream, "Command \"%s\" does not have a help function.\n", argv[0]);
-						ws_setConsoleColors(ws_getDefaultColors());
-						return 0;
-					}
-
-					// Execute the help command associated with the matched alias
-					int result = commands[i].helpCommand(argc, argv);
-					if (result != 0) {
-						// If the command function returns a non-zero value, it may indicate an error
-						ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-						fprintf(ws_out_stream, "Command exited with code: %d\n", result);
-						ws_setConsoleColors(ws_getDefaultColors());
-					}
-					return 0;
-				}
-			}
-		}
-		// If the command is not found in the registered commands or their aliases
-		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "Help command not found for: %s\n", argv[0]);
-	} else {
-		fprintf(ws_out_stream, "\n");
-		ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "To get more info about a command, run `help <command_name>`\n");
-		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "All commands:\n");
-
-		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
-		// List all available commands
-		for (int i = 0; i < current_command_spot; i++) {
-			if (commands[i].commandName) {
-				fprintf(ws_out_stream, "  %s\n", commands[i].commandName);
-			}
-		}
-		fprintf(ws_out_stream, "\n");
+	if (ws_has_arg(ctx, "search")) {
+		helpSearch(ws_get_string(ctx, "search"));
+		return 0;
 	}
+
+	if (ws_has_arg(ctx, "command")) {
+		const char* name = ws_get_generic(ctx, "command");
+		const ws_command_t* found = ws_internal_findCommand(name);
+		if (!found) {
+			ws_internal_argError("Help command not found for: %s", name);
+			return 0;
+		}
+		ws_internal_showCommandHelp(found, argc - 1, argv + 1);
+		return 0;
+	}
+
+	fprintf(ws_out_stream, "\n");
+	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
+	fprintf(ws_out_stream, "To get more info about a command, run `help <command_name>`\n");
+	ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
+	fprintf(ws_out_stream, "All commands:\n");
+
+	ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
+	// List all available commands
+	for (int i = 0; i < current_command_spot; i++) {
+		if (commands[i].command_name) {
+			fprintf(ws_out_stream, "  %s\n", commands[i].command_name);
+		}
+	}
+	fprintf(ws_out_stream, "\n");
 	ws_setConsoleColors(ws_getDefaultColors());
 	return 0;
 }
 
 /* Internal history command */
 const char* history_aliases[] = { "hist" };
-/**
- * @internal
- * @brief History function help command
- */
-int historyHelp(int argc, char** argv) {
-	ws_help_entry_general_t entry = {
-			"History",
-			"Displays the terminal history. Limit of 32 previous commands.",
-			NULL,
-			0,
-			history_aliases,
-			1
-	};
-	ws_printGeneralHelp(&entry);
-	return 0;
-}
 
 /**
  * @internal
  * @brief History function main command
  */
-int historyMain(int argc, char** argv) {
+int historyMain(void) {
 	ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 	for (size_t i = 0; i < previous_commands_size; i++) {
 		fprintf(ws_out_stream, "%s\n", previousCommands[i]);
@@ -1452,44 +1896,24 @@ bool exit_terminal = false;
 #endif
 
 /* Internal exit command */
-/**
- * @internal
- * @brief Exit function help command
- */
-int exitHelp(int argc, char** argv) {
-	const char* optional[] = {
-			"--yes",
-			"-y   -> Exits the terminal without the prompt."
-	};
-	ws_help_entry_specific_t entry = {
-			"Exit",
-			"Exits the terminal.",
-			NULL,
-			0,
-			optional,
-			2
-	};
-	ws_printSpecificHelp(&entry);
-	return 0;
-}
+const ws_command_argument_t exit_args[] = {
+	{ WS_ARG_TYPE_FLAG, false, "--yes", "-y", "Exits the terminal without the confirmation prompt." },
+};
 
 /**
  * @internal
  * @brief Exit function main command
  */
 int exitMain(int argc, char** argv) {
-	if (argc > 1) {
-		if ((strcmp(argv[1], "-y") == 0 || strcmp(argv[1], "--yes") == 0)) {
-			SET_EXIT_BOOL(true);
-		} else {
-			ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-			fprintf(ws_out_stream, "Unknown argument: %s\n", argv[1]);
-			ws_setConsoleColors(ws_getDefaultColors());
-		}
+	ws_context_t* ctx = ws_getCurrentContext();
+	if (!ws_parse_args(ctx, argc, argv)) return 1;
+
+	if (ws_get_flag(ctx, "yes")) {
+		SET_EXIT_BOOL(true);
 	} else {
 		SET_EXIT_BOOL(ws_promptUser("Are you sure you want to exit?"));
 	}
-	printf("\n");
+	fprintf(ws_out_stream, "\n");
 	return 0;
 }
 
@@ -1506,19 +1930,39 @@ void ws_internal_registerBasicCommands() {
 	// a bare shell only has help, exit, clear, and history
 	// might come up with some more overtime, such as echo, but it's not a big priority.
 #ifndef NO_CLEAR_COMMAND
-	ws_registerCommand((ws_command_t) { clearMain, clearHelp, "clear", clear_aliases, 2 });
+	ws_registerCommand((ws_command_t) {
+		.command_name = "clear",
+		.aliases = clear_aliases,
+		.alias_count = 2,
+		.main_void = clearMain,
+	});
 #endif // NO_CLEAR_COMMAND
 
 #ifndef NO_HELP_COMMAND
-	ws_registerCommand((ws_command_t) { helpMain, helpHelp, "help", NULL, 0 });
+	ws_registerCommand((ws_command_t) {
+		.command_name = "help",
+		.main_func = helpMain,
+		.arguments = help_args,
+		.arguments_count = sizeof(help_args) / sizeof(help_args[0]),
+	});
 #endif // NO_HELP_COMMAND
 
 #ifndef NO_HISTORY_COMMAND
-	ws_registerCommand((ws_command_t) { historyMain, historyHelp, "history", history_aliases, 1 });
+	ws_registerCommand((ws_command_t) {
+		.command_name = "history",
+		.aliases = history_aliases,
+		.alias_count = 1,
+		.main_void = historyMain,
+	});
 #endif // NO_HISTORY_COMMAND
 
 #ifndef NO_EXIT_COMMAND
-	ws_registerCommand((ws_command_t) { exitMain, exitHelp, "exit", NULL, 0 });
+	ws_registerCommand((ws_command_t) {
+		.command_name = "exit",
+		.main_func = exitMain,
+		.arguments = exit_args,
+		.arguments_count = sizeof(exit_args) / sizeof(exit_args[0]),
+	});
 #endif // NO_EXIT_COMMAND
 }
 
@@ -1650,88 +2094,227 @@ input_result_t ws_internal_processEO() {
 	return result;
 }
 
+char** envp = NULL;
+
+void ws_setEnvironment(char** e) {
+	envp = e;
+}
+
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // Execute command & Main
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-/**
- * @brief Execute a command with the provided buffer.
- * @param commandBuf Buffer containing the command to execute, including any flags, parameters, etc.
- * @return Can return WS_OUT_OF_MEMORY if malloc returns NULL when DISABLE_MALLOC is not defined.
- */
-ws_error_t ws_executeCommand(char* commandBuf) {
+
 #ifdef DISABLE_MALLOC
-	// Split the commandBuf into arguments based on spaces or other delimiters
+/**
+ * @brief Parse the command buffer into argv, supporting quoted args, in place with max_args.
+ */
+int ws_internal_parseArgsForExecute(char* commandBuf, char** argv, int max_args) {
 	int argc = 0;
-	char* argv[MAX_ARGS];
-	char* current = strtok(commandBuf, " ");
-	while (current != NULL) {
-		if (argc >= MAX_ARGS) break;
-		// allocates memory for the string and copies it
-		argv[argc] = current;
-		current = strtok(NULL, " ");
-		argc++;
+	char* read_ptr = commandBuf;
+	char* write_ptr = commandBuf;
+	bool in_quotes = false;
+	bool in_arg = false;
+
+	while (*read_ptr != '\0') {
+		if (isspace((unsigned char) *read_ptr) && !in_quotes) {
+			if (in_arg) {
+				*write_ptr++ = '\0';
+				in_arg = false;
+			}
+		} else if (*read_ptr == '"') {
+			in_quotes = !in_quotes;
+
+			// If starting a new argument with a quote
+			if (!in_arg && argc < max_args - 1) {
+				argv[argc++] = write_ptr;
+				in_arg = true;
+			}
+		} else {
+			// If starting a new unquoted argument
+			if (!in_arg && argc < max_args - 1) {
+				argv[argc++] = write_ptr;
+				in_arg = true;
+			}
+			*write_ptr++ = *read_ptr; // Shift character to the left
+		}
+		read_ptr++;
 	}
-#else
-	// We treat this like system execution does with int argc & char** argv.
-	// argv[0] is always the command name, argc always is at least 1 because of this
+
+	// Terminate the final argument if the string didn't end in a space
+	if (in_arg) {
+		*write_ptr = '\0';
+	}
+
+	argv[argc] = NULL; // Null-terminate the array for safety
+	return argc;
+}
+#endif
+
+#ifndef DISABLE_MALLOC
+/**
+ * @brief Parses commandBuf with quoted string support using dynamic memory allocation. Allows an unbounded number of arguments.
+ */
+static ws_error_t ws_internal_parseArgsForExecuteAlloc(char* commandBuf, int* out_argc, char*** out_argv) {
 	int argc = 0;
 	char** argv = NULL;
-	char* current = strtok(commandBuf, " ");
+	char* read_ptr = commandBuf;
+	char* write_ptr = commandBuf;
+	bool in_quotes = false;
+	bool in_arg = false;
+	char* current_arg = NULL;
 
-	while (current != NULL) {
-		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
-		if (!newptr) {
-			if (argv) {
-				// free each string allocated by strdup
-				for (int i = 0; i < argc; i++) free(argv[i]);
-				free(argv);
+	while (*read_ptr != '\0') {
+		if (isspace((unsigned char) *read_ptr) && !in_quotes) {
+			if (in_arg) {
+				*write_ptr++ = '\0';
+				in_arg = false;
+
+				char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
+				if (!newptr) goto alloc_error;
+				argv = newptr;
+
+				char* str = (char*) malloc(strlen(current_arg) + 1);
+				if (!str) goto alloc_error;
+				strcpy(str, current_arg);
+				argv[argc++] = str;
 			}
-			return WS_OUT_OF_MEMORY;
+		} else if (*read_ptr == '"') {
+			in_quotes = !in_quotes;
+			if (!in_arg) {
+				current_arg = write_ptr;
+				in_arg = true;
+			}
 		} else {
-			argv = newptr;
+			if (!in_arg) {
+				current_arg = write_ptr;
+				in_arg = true;
+			}
+			*write_ptr++ = *read_ptr;
 		}
-		// allocates memory for the string and copies it
-		char* str = malloc(strlen(current) + 1);
-		strcpy(str, current);
-		argv[argc] = str;
-		current = strtok(NULL, " ");
-		argc++;
+		read_ptr++;
 	}
-	if (argc == 0) {
-		// Somehow got an empty command.
-		if (argv) free(argv);
-		return WS_NO_ERROR;
+
+	if (in_arg) {
+		*write_ptr = '\0';
+		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
+		if (!newptr) goto alloc_error;
+		argv = newptr;
+
+		char* str = (char*) malloc(strlen(current_arg) + 1);
+		if (!str) goto alloc_error;
+		strcpy(str, current_arg);
+		argv[argc++] = str;
+	}
+
+	// NULL-terminate the argv array
+	if (argc > 0) {
+		char** newptr = (char**) realloc(argv, sizeof(char*) * (argc + 1));
+		if (!newptr) goto alloc_error;
+		argv = newptr;
+		argv[argc] = NULL;
+	}
+
+	*out_argc = argc;
+	*out_argv = argv;
+	return WS_NO_ERROR;
+
+alloc_error:
+	if (argv) {
+		for (int i = 0; i < argc; i++) free(argv[i]);
+		free(argv);
+	}
+	return WS_OUT_OF_MEMORY;
+}
+#endif // DISABLE_MALLOC
+
+static bool ws_internal_hasUnmatchedQuotes(const char* str) {
+	if (!str) return false;
+	int quote_count = 0;
+	while (*str) {
+		if (*str == '"') {
+			quote_count++;
+		}
+		str++;
+	}
+	return (quote_count % 2) != 0;
+}
+
+/**
+ * @brief Execute a command with the provided buffer.
+ * @param commandBuf Buffer containing the command to execute.
+ * @return WS_OUT_OF_MEMORY if malloc/realloc fails, or WS_NO_ERROR.
+ */
+ws_error_t ws_executeCommand(char* commandBuf) {
+	// Before we even parse anything, we need to make sure we don't have an odd number of quotes
+	// Having an odd number means the user didn't close a quote somewhere
+	if (ws_internal_hasUnmatchedQuotes(commandBuf)) {
+		ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
+		fprintf(ws_out_stream, "Syntax error: Unmatched double quote '\"'.\n");
+		ws_setConsoleColors(ws_getDefaultColors());
+		return WS_UNBALANCED_QUOTES;
+	}
+#ifdef DISABLE_MALLOC
+	int argc = 0;
+	char* argv[MAX_ARGS];
+	argc = ws_internal_parseArgsForExecute(commandBuf, argv, MAX_ARGS);
+#else
+	int argc = 0;
+	char** argv = NULL;
+	ws_error_t err = ws_internal_parseArgsForExecuteAlloc(commandBuf, &argc, &argv);
+	if (err != WS_NO_ERROR) {
+		return err;
 	}
 #endif // DISABLE_MALLOC
+
+	if (argc == 0) {
+		// Empty command buffer passed
+#ifndef DISABLE_MALLOC
+		if (argv) free(argv);
+#endif
+		return WS_NO_ERROR;
+	}
+
 	// Call Command (if it exists)
-	for (size_t i = 0; i < current_command_spot; i++) {
-		if (commands[i].commandName && strcmp(commands[i].commandName, argv[0]) == 0) {
-			int result = commands[i].mainCommand(argc, argv);
+	
+	const ws_command_t* found = ws_internal_findCommand(argv[0]);
+	if (found) {
+		CONTEXT_MUTEX_CHECK;
+		LOCK_CONTEXT_MUTEX;
+
+		if (ws_internal_wantsHelp(argc, argv)) {
+			ws_internal_context_reset(&ws_internal_current_context, found);
+			ws_internal_showCommandHelp(found, argc, argv);
+		} else {
+			ws_internal_context_reset(&ws_internal_current_context, found);
+
+			int result;
+			if (found->env_func) {
+				result = found->env_func(argc, argv, envp);
+			} else if (found->main_func) {
+				result = found->main_func(argc, argv);
+			} else if (found->main_void) {
+				result = found->main_void();
+			} else {
+				result = 0;
+			}
+
 			if (result != 0) {
 				// If the command function returns a non-zero value, it may indicate an error
 				ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 				fprintf(ws_out_stream, "Command exited with code: %d\n", result);
 			}
-			goto cleanup;
 		}
 
-		// Check that commands alias
-		for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
-			if (commands[i].aliases[alias_idx] && strcmp(commands[i].aliases[alias_idx], argv[0]) == 0) {
-				int result = commands[i].mainCommand(argc, argv);
-				if (result != 0) {
-					// If the command function returns a non-zero value, it may indicate an error
-					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
-					fprintf(ws_out_stream, "Command exited with code: %d\n", result);
-				}
-				goto cleanup;
-			}
-		}
+		ws_internal_context_reset(&ws_internal_current_context, NULL);
+		UNLOCK_CONTEXT_MUTEX;
+		goto cleanup;
 	}
+	
 	ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 	fprintf(ws_out_stream, "Command not found: \"%s\"\n", argv[0]);
+
 cleanup:
 #ifndef DISABLE_MALLOC
 	for (int i = 0; i < argc; i++) free(argv[i]);
@@ -1771,6 +2354,7 @@ void ws_cleanAll() {
 #endif // THREADED_SUPPORT
 	ws_internal_cleanStreams();
 	ws_internal_cleanCommands();
+	ws_internal_cleanContext();
 	ws_internal_cleanColors();
 #ifndef NO_LOGGING
 	ws_internal_cleanLogger();
@@ -1790,7 +2374,7 @@ ws_error_t ws_terminalMain() {
 #endif
 
 	// Check for stream configurations
-	if (!ws_err_stream) ws_setStream(WS_ERROR, stderr);
+	if (!ws_err_stream) ws_setStream(WS_ERROR_S, stderr);
 	if (!ws_out_stream) ws_setStream(WS_OUTPUT, stdout);
 	if (!ws_in_stream) ws_setStream(WS_INPUT, stdin);
 
@@ -1809,7 +2393,7 @@ ws_error_t ws_terminalMain() {
 	bool newCommand = true;
 	bool tabPressed = false; // allows for autocompletion
 
-	size_t position_in_previous = 0;
+	int history_index = -1;
 	size_t current_position = 1;
 
 	char commandBuf[MAX_COMMAND_BUF];
@@ -1822,7 +2406,7 @@ ws_error_t ws_terminalMain() {
 			fprintf(ws_out_stream, "%s", prefix);
 			newCommand = false;
 			tabPressed = false;
-			position_in_previous = 0;
+			history_index = -1;
 			current_position = 1;
 			memset(oldCommand, 0, MAX_COMMAND_BUF);
 			memset(commandBuf, 0, MAX_COMMAND_BUF);
@@ -1836,34 +2420,41 @@ ws_error_t ws_terminalMain() {
 			if (input_result.type == CURSOR) {
 				switch (input_result.result) {
 					case WS_CURSOR_UP: {
-							CLEAR_ROW;
-							if (position_in_previous == 0) {
-								memset(oldCommand, 0, MAX_COMMAND_BUF);
-								memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
-							}
-							memset(commandBuf, 0, MAX_COMMAND_BUF);
-							memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
-							fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
-							if (previous_commands_size > 0 && position_in_previous < previous_commands_size - 1) {
-								position_in_previous++;
+							if (previous_commands_size > 0) {
+								if (history_index == -1) {
+									// Save whatever the user typed before entering history
+									memset(oldCommand, 0, MAX_COMMAND_BUF);
+									memcpy(oldCommand, commandBuf, MAX_COMMAND_BUF);
+									history_index = 0;
+								} else if (history_index < (int) previous_commands_size - 1) {
+									history_index++;
+								}
+
+								CLEAR_ROW;
+								memset(commandBuf, 0, MAX_COMMAND_BUF);
+								memcpy(commandBuf, previousCommands[history_index], strlen(previousCommands[history_index]));
+								fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+								current_position = strlen(commandBuf) + 1;
 							}
 							input_result.type = NONE;
-							current_position = 1;
 							continue;
 						}
 					case WS_CURSOR_DOWN: {
-							CLEAR_ROW;
-							if (previous_commands_size == 1 && position_in_previous == 1) position_in_previous--;
-							if (position_in_previous > 0) {
-								position_in_previous--;
-								memset(commandBuf, 0, MAX_COMMAND_BUF);
-								memcpy(commandBuf, previousCommands[position_in_previous], strlen(previousCommands[position_in_previous]));
-							} else {
-								memset(commandBuf, 0, MAX_COMMAND_BUF);
-								memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
+							if (history_index != -1) {
+								CLEAR_ROW;
+								if (history_index > 0) {
+									history_index--;
+									memset(commandBuf, 0, MAX_COMMAND_BUF);
+									memcpy(commandBuf, previousCommands[history_index], strlen(previousCommands[history_index]));
+								} else {
+									// Returned to the original uncommitted command
+									history_index = -1;
+									memset(commandBuf, 0, MAX_COMMAND_BUF);
+									memcpy(commandBuf, oldCommand, MAX_COMMAND_BUF);
+								}
+								fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+								current_position = strlen(commandBuf) + 1;
 							}
-							fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
-							current_position = 1;
 							input_result.type = NONE;
 							continue;
 						}
@@ -1889,26 +2480,25 @@ ws_error_t ws_terminalMain() {
 #endif
 		}
 
-		int current = ws_get_char(ws_in_stream);
+		int current = ws_internal_get_char_nonblocking(ws_in_stream);
 
 		if (current == -2) {
+#ifdef THREADED_SUPPORT
 			ws_sleep(10);
+#endif
 			continue;
 		}
 
-		// printf("current c: %c - %d\n", current, current);
-
 		if (backspace_as_ascii_delete && current == 0x7f)
 			current = '\b';
+
 		if (current == '\n' || current == '\r') {
-			// If there's an empty command we just start a new line.
 			fprintf(ws_out_stream, "\n");
 			if (strlen(commandBuf) == 0) {
 				newCommand = true;
 				continue;
 			}
 
-			// Move everything right in the previous buf
 			if (previous_commands_size > 0) {
 				if (strcmp(previousCommands[0], commandBuf) != 0) {
 					for (size_t i = previous_commands_size; i > 0; i--) {
@@ -1931,48 +2521,43 @@ ws_error_t ws_terminalMain() {
 		} else if (current == '\b') {
 			if (strlen(commandBuf) > 0) {
 				if (current_position <= 1) continue;
-				// Remove the current position & shift to the left
+
 				size_t len = strlen(commandBuf);
 				for (size_t i = current_position - 2; i < len; i++) {
 					commandBuf[i] = commandBuf[i + 1];
 				}
-				// Ensure it's null terminated.
-				// In theory, it should already be, but I'd rather do this unnecessary step than have an overflow or messed up buffer.
 				commandBuf[len - 1] = '\0';
 
 				current_position--;
 				if (current_position != (strlen(commandBuf) + 1)) {
 					CLEAR_ROW;
-					fprintf(ws_out_stream, "%s%s", prefix, commandBuf);
-					ws_moveCursor(WS_CURSOR_LEFT);
-					for (size_t i = strlen(commandBuf); i > current_position; i--) {
+					fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+
+					// Position cursor correctly after redrawing from column 0
+					for (size_t i = strlen(commandBuf) + 1; i > current_position; i--) {
 						ws_moveCursor(WS_CURSOR_LEFT);
 					}
 				} else {
-					// only clear the last char. much quicker than rewriting the line
 					ws_moveCursor(WS_CURSOR_LEFT);
 					fprintf(ws_out_stream, " ");
 					ws_moveCursor(WS_CURSOR_LEFT);
 				}
 			}
 		} else if (current == '\t') {
-			// see if we can autocomplete a command.
-			const char* list[50]; // List of current possible commands
+			const char* list[50];
 			int list_size = 0;
 			for (int i = 0; i < command_size; i++) {
 				ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_GREEN, WS_BG_DEFAULT });
-				if (commands[i].commandName && ws_internal_startsWith(commands[i].commandName, commandBuf)) {
-					list[list_size] = commands[i].commandName;
+				if (commands[i].command_name && ws_internal_startsWith(commands[i].command_name, commandBuf)) {
+					list[list_size] = commands[i].command_name;
 					list_size++;
 				}
 
-				// Check aliases for a match
-				for (size_t alias_idx = 0; alias_idx < commands[i].aliases_count; alias_idx++) {
+				for (uint8_t alias_idx = 0; alias_idx < commands[i].alias_count; alias_idx++) {
 					if (commands[i].aliases[alias_idx] && ws_internal_startsWith(commands[i].aliases[alias_idx], commandBuf)) {
-						// If it's an alias of a command that's already in the list, we dont want it.
 						bool already_in_list = false;
 						for (int j = 0; j < list_size; j++) {
-							if (strcmp(list[j], commands[i].commandName) == 0) {
+							if (strcmp(list[j], commands[i].command_name) == 0) {
 								already_in_list = true;
 								break;
 							}
@@ -1987,32 +2572,34 @@ ws_error_t ws_terminalMain() {
 			}
 
 			if (list_size == 1) {
-				// Print the rest of the command
 				size_t len = strlen(commandBuf);
 				const char* currentCommand = list[0];
 				for (size_t i = len; i < strlen(currentCommand); i++) {
 					fprintf(ws_out_stream, "%c", currentCommand[i]);
 					ws_internal_strcat_c(commandBuf, currentCommand[i], MAX_COMMAND_BUF);
 				}
+				current_position = strlen(commandBuf) + 1;
 				tabPressed = false;
 			} else if (tabPressed) {
 				if (list_size == 0) {
 					ws_setConsoleColors((ws_color_t) { WS_FG_BRIGHT_RED, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "\nNo command starting with: %s\n", commandBuf);
-					// Clear the buffer
 					memset(commandBuf, 0, MAX_COMMAND_BUF * sizeof(char));
 					commandBuf[0] = '\0';
 					newCommand = true;
 				} else if (list_size > 1) {
-					// Print out all commands
 					ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
 					fprintf(ws_out_stream, "\n");
 					for (int i = 0; i < list_size; i++) {
 						fprintf(ws_out_stream, "%s\n", list[i]);
 					}
 					ws_setConsoleColors(ws_getDefaultColors());
-					// Reprint the command line
 					fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+
+					// Reposition cursor if tab completion ran mid-line
+					for (size_t i = strlen(commandBuf) + 1; i > current_position; i--) {
+						ws_moveCursor(WS_CURSOR_LEFT);
+					}
 				}
 				tabPressed = false;
 			} else {
@@ -2020,23 +2607,17 @@ ws_error_t ws_terminalMain() {
 			}
 			ws_setConsoleColors(ws_getDefaultColors());
 		} else if (current == EOF) {
-			// Temporarily for development’s sake, this is how you exit the console.
-			// ctrl+d on unix, ctrl+z on windows
 			break;
 		} else if (current == '\033') {
 			input_result = ws_internal_processVirtualSequence();
 		} else if (current == 0xE0) {
-			// Microsoft sometimes wants to work with virtual inputs but usually doesn't.
-			// At the very least this makes porting it to an os very easy.
-			// All the OS has to do is give this program raw input in the form of scancodes for special keys.
 			input_result = ws_internal_processEO();
 		} else {
-
 			ws_internal_insert_c(commandBuf, MAX_COMMAND_BUF, (char) current, current_position);
 			if (current_position != strlen(commandBuf)) {
 				CLEAR_ROW;
-				fprintf(ws_out_stream, "%s%s", prefix, commandBuf);
-				for (size_t i = strlen(commandBuf); i > current_position; i--) {
+				fprintf(ws_out_stream, "\r%s%s", prefix, commandBuf);
+				for (size_t i = strlen(commandBuf) + 1; i > current_position + 1; i--) {
 					ws_moveCursor(WS_CURSOR_LEFT);
 				}
 			} else {
@@ -2066,10 +2647,14 @@ ws_error_t ws_terminalMain() {
  */
 bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2) {
 	if (c1.aliases != c2.aliases) return false;
-	if (c1.aliases_count != c2.aliases_count) return false;
-	if (strcmp(c1.commandName, c2.commandName) != 0) return false;
-	if (c1.helpCommand != c2.helpCommand) return false;
-	if (c1.mainCommand != c2.mainCommand) return false;
+	if (c1.alias_count != c2.alias_count) return false;
+	if (strcmp(c1.command_name, c2.command_name) != 0) return false;
+	if (c1.help_func != c2.help_func) return false;
+	if (c1.main_void != c2.main_void) return false;
+	if (c1.main_func != c2.main_func) return false;
+	if (c1.env_func != c2.env_func) return false;
+	if (c1.arguments != c2.arguments) return false;
+	if (c1.arguments_count != c2.arguments_count) return false;
 	return true;
 }
 
@@ -2081,92 +2666,6 @@ bool ws_compareCommands(const ws_command_t c1, const ws_command_t c2) {
  * If the system you are implementing requires locale configuration, redefine SET_TERMINAL_LOCALE to the needed configuration.
  */
 void ws_setConsoleLocale() { SET_TERMINAL_LOCALE; }
-
-/**
- * @anchor general help
- * @brief Prints the general help entry.
- * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
- */
-void ws_printGeneralHelp(ws_help_entry_general_t* entry) {
-	// Command Name
-	ws_setConsoleColors((ws_color_t) { WS_FG_RED, WS_BG_DEFAULT });
-	if (entry->commandName)
-		fprintf(ws_out_stream, "\n%s\n", entry->commandName);
-
-	// Description
-	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
-	if (entry->description)
-		fprintf(ws_out_stream, "%s\n", entry->description);
-
-	// Commands
-	if (entry->commands_count > 0) {
-		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "\nCommands:\n");
-
-		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
-		for (int i = 0; i < entry->commands_count; i++) {
-			if (entry->commands[i])
-				fprintf(ws_out_stream, "  %s\n", entry->commands[i]);
-		}
-	}
-
-	// Aliases
-	if (entry->aliases_count > 0) {
-		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "\nAliases:\n");
-
-		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
-		for (int i = 0; i < entry->aliases_count; i++) {
-			if (entry->aliases[i])
-				fprintf(ws_out_stream, "  %s\n", entry->aliases[i]);
-		}
-	}
-	ws_setConsoleColors((ws_color_t) { WS_FG_DEFAULT, WS_BG_DEFAULT });
-	fprintf(ws_out_stream, "\n");
-}
-
-/**
- * @brief Prints the specific help entry.
- * @param entry Entry to be displayed. If you don't want sections displayed, mark them as NULL in the struct.
- * @anchor specific_help
- */
-void ws_printSpecificHelp(ws_help_entry_specific_t* entry) {
-	// Command Name
-	ws_setConsoleColors((ws_color_t) { WS_FG_RED, WS_BG_DEFAULT });
-	if (entry->commandName)
-		fprintf(ws_out_stream, "\n%s\n", entry->commandName);
-
-	// Description
-	ws_setConsoleColors((ws_color_t) { WS_FG_CYAN, WS_BG_DEFAULT });
-	if (entry->description)
-		fprintf(ws_out_stream, "%s\n", entry->description);
-
-	// Commands
-	if (entry->required_count > 0) {
-		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "Required:\n");
-
-		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
-		for (int i = 0; i < entry->required_count; i++) {
-			if (entry->required[i])
-				fprintf(ws_out_stream, "  %s\n", entry->required[i]);
-		}
-	}
-
-	// Aliases
-	if (entry->optional_count > 0) {
-		ws_setConsoleColors((ws_color_t) { WS_FG_YELLOW, WS_BG_DEFAULT });
-		fprintf(ws_out_stream, "\nOptional:\n");
-
-		ws_setConsoleColors((ws_color_t) { WS_FG_GREEN, WS_BG_DEFAULT });
-		for (int i = 0; i < entry->optional_count; i++) {
-			if (entry->optional[i])
-				fprintf(ws_out_stream, "  %s\n", entry->optional[i]);
-		}
-	}
-	ws_setConsoleColors((ws_color_t) { WS_FG_DEFAULT, WS_BG_DEFAULT });
-	fprintf(ws_out_stream, "\n");
-}
 
 /**
  * @brief Prompts the user yes/no using the given prompt.
@@ -2185,7 +2684,7 @@ bool ws_promptUser(const char* format, ...) {
 	fprintf(ws_out_stream, "%c", first_input);
 	int input;
 	do {
-		 input = ws_get_char_blocking(ws_in_stream);
+		input = ws_get_char_blocking(ws_in_stream);
 		fprintf(ws_out_stream, "%c", input);
 	} while (input != '\n' && input != '\r');
 	if (first_input == 'Y' || first_input == 'y') return true;
@@ -2197,7 +2696,7 @@ bool ws_promptUser(const char* format, ...) {
 // ------------------------------------------------------------------------------------------------
 // The bottom of this file is to document things for Doxygen that aren't necessarily able to be
 // documented elsewhere, or are otherwise messy to do so. This includes things like structs,
-// typedefs, unions, etc. Anything that isn't documented in place should be done so here. 
+// typedefs, unions, etc. Anything that isn't documented in place should be done so here.
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
@@ -2205,28 +2704,11 @@ bool ws_promptUser(const char* format, ...) {
  * @struct ws_command_t wall_shell.h
  * @brief Command Data Structure
  *
- * This structure holds all data related to the command. There are two required entries, `mainCommand` and `commandName`.
- * The rest of the structures are optional, and if they are unused should be set to `NULL`, `nullptr`, or `0` respectively.
+ * This structure holds all data related to the command. `command_name` is required, along with at least
+ * one of `main_void`, `main_func`, or `env_func`. The rest of the fields are optional, and if unused
+ * should be left as `NULL`/`0` (this is what a designated-initializer literal gives you for free).
  *
- * @var ws_command_t::mainCommand
- * @brief Main function of the command. This is called when your command is written in terminal.
- *
- * Should be a pointer to a C style main function.
- * This means it needs to be in the form `int func(int argc, char** argv);`
- * If you are using this in C++, you will have to mark it `extern "c"`, and may have to do some trickery if it's part of a class.
- * `argc` and `argv` work identically to those in the C-standard.
- * The return code is displayed to terminal if it isn't 0.
- *
- * @var ws_command_t::helpCommand
- * @brief Help function of the command. This is not required. This is called when `help <command>` is called.
- *
- * Should be a pointer to a C style main function.
- * This means it needs to be in the form `int func(int argc, char** argv);`
- * If you are using this in C++, you will have to mark it `extern "C"`, and may have to do some trickery if it's part of a class.
- * `argc` and `argv` work identically to those in the C-standard.
- * The return code is displayed to terminal if it isn't 0.
- *
- * @var ws_command_t::commandName
+ * @var ws_command_t::command_name
  * @brief Name of the command. This is what the user has to type into the terminal to run your command.
  *
  * @var ws_command_t::aliases
@@ -2235,76 +2717,43 @@ bool ws_promptUser(const char* format, ...) {
  * If declared in context, and that scope is exited, WallShell will be trying to read non-existent entries, likely causing a segfault.
  * Create this array using malloc (or calloc) if available, or declare it in a global scope.
  *
- * @var ws_command_t::aliases_count
+ * @var ws_command_t::alias_count
  * @brief Amount of aliases in your alias array.
  *
  * This should act like strlen, it's the count, not the indexes.
  * If this number is inaccurate, WallShell will either not read all you entries (if count is too small) or create a buffer overflow (and likely a segfault).
- */
-
-/**
- * @struct ws_help_entry_general_t wall_shell.h
- * @brief General help structure.
  *
- * Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as `NULL` to not print them.
- * This is meant for general command help entries, mostly meaning first level commands (like clear, exit, etc.)
+ * @var ws_command_t::main_void
+ * @brief Main function of the command, for commands that take no arguments. Called when your command is entered in the terminal.
  *
- * This is often used to define "Categories".
- * Say you have several time functions.
- * Each one could set it's help function to the same thing, which in turn prints this structure listing out all `time` commands.
- * You can also use it to show sub-commands in a similar way.
- * Using git as an example, you could have `help git` print this structure,
- * while listing things like `git branch` under the commands part of this struct.
+ * @var ws_command_t::main_func
+ * @brief Main function of the command, in the form `int func(int argc, char** argv)`, identical to a C-standard `main`.
  *
- * Meant to be used with @ref ws_printGeneralHelp().
+ * @var ws_command_t::env_func
+ * @brief Main function of the command, in the form `int func(int argc, char** argv, char** envp)`.
  *
- * @var ws_help_entry_general_t::commandName
- * @brief Name of the command.
+ * Of `main_void`, `main_func`, and `env_func`, the most specific one that's defined is what WallShell calls:
+ * `env_func` takes priority over `main_func`, which takes priority over `main_void`.
  *
- * @var ws_help_entry_general_t::description
- * @brief Description of the command.
+ * @var ws_command_t::help_func
+ * @brief Help function of the command. This is not required.
  *
- * @var ws_help_entry_general_t::commands
- * @brief Commands that are a subset of this command/topic.
+ * This is called when `help <command>` is run, or when the command itself is run with `--help`/`-h`.
+ * If left `NULL`, WallShell auto-generates a help entry from `arguments` using @ref ws_printCommandHelp().
+ * You can call @ref ws_printCommandHelp() from inside your own help_func to keep formatting consistent.
  *
- * @var ws_help_entry_general_t::commands_count
- * @brief Amount of commands in the `commands` part of this structure. It's the count, not the indexes.
+ * @var ws_command_t::major
+ * @var ws_command_t::minor
+ * @var ws_command_t::patch
+ * @brief Optional version numbers for the command, displayed by the auto-generated help output if non-zero.
  *
- * @var ws_help_entry_general_t::aliases
- * @brief Any aliases that this command has.
- * @note It's generally a good idea to use the same `aliases` array that you used when creating the @ref ws_command_t related to this command.
+ * @var ws_command_t::arguments
+ * @brief Optional array of argument definitions for this command, used by ws_parse_args()/ws_get<type>() and
+ * by the auto-generated help output.
+ * @warning Same lifetime warning as `aliases` applies - this must outlive the command's registration.
  *
- * @var ws_help_entry_general_t::aliases_count
- * @brief Amount of commands in the `aliases` part of this structure. It's the count, not the indexes.
- */
-
-/**
- * @struct ws_help_entry_specific_t wall_shell.h
- * Specific help structure. Makes printing help menu entries consistent across different functions.
- * Not all fields have to be filled in. You can leave fields as NULL to not print them.
- *
- * This is meant for things like subcommands, flags, etc.
- *
- * Meant to be used with @ref ws_printSpecificHelp().
- *
- * @var ws_help_entry_specific_t::commandName
- * @brief Name of the command.
- *
- * @var ws_help_entry_specific_t::description
- * @brief Description of the command.
- *
- * @var ws_help_entry_specific_t::required
- * @brief Flags/subcommands that are a required when running this command.
- *
- * @var ws_help_entry_specific_t::required_count
- * @brief Amount of flags/subcommands in the `required` part of this structure. It's the count, not the indexes.
- *
- * @var ws_help_entry_specific_t::optional
- * @brief Flags/subcommands that are optional when running this command.
- *
- * @var ws_help_entry_specific_t::optional_count
- * @brief Amount of flags/subcommands in the `optional` part of this structure. It's the count, not the indexes.
+ * @var ws_command_t::arguments_count
+ * @brief Amount of entries in the `arguments` array. Same "count, not indexes" rule as `alias_count`.
  */
 
 /**
